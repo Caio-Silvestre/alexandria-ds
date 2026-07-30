@@ -1,32 +1,21 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 /**
- * Pharos Theme
+ * Pharos Theme — Alexandria brand
  *
- * A pure grayscale spine with a from-scratch OKLCH-derived categorical
- * palette. Hues are placed at evenly-spaced positions on the OKLCH wheel,
- * chosen to keep each color recognizable at every tone (no red drift for
- * orange, no blue drift for purple) and well-separated from its neighbors.
+ * Brandbook (Março/2026) as source of truth for accent + neutrals:
+ *   Azul primária  #034694
+ *   Roxo destaque  #7C51A1
+ *   Laranja        #F26641
+ *   Amarelo #1     #FAA61A
+ *   Amarelo #2     #FFF200
+ *   Chumbo texto   #383838
  *
- * Core neutral palette: #fafafa, #f5f5f5, #e5e5e5, #737373, #262626, #0a0a0a
+ * Surfaces stay near-white / soft gray (brand: avoid absolute black).
+ * Categorical ramps keep OKLCH structure; brand stops replace blue /
+ * purple / orange / yellow anchors where contrast allows.
  *
- * Categorical hues (OKLCH; chroma = max-in-gamut at the saturated stop):
- *   Red H=25    Orange H=65    Yellow H=90    Green H=145
- *   Teal H=180  Cyan H=215     Blue H=250     Purple H=320  Pink H=355
- *
- * Saturated badge stops:
- *   • Cool/medium hues sit at OKLCH L=0.48–0.50 with white text (AA+)
- *   • Bright warm hues (orange L=0.68, yellow L=0.80) use dark text
- *
- * Token tonal stops:
- *   bg     = T90 (light) / T20 (dark)
- *   border = T80         / T30
- *   icon   = T30         / T80
- *   text   = T30         / T80
- *
- * All 9 saturated badge values pass WCAG AA (5.6–9.6 contrast range).
- *
- * Only overrides tokens that differ from the defaults.
+ * Token pairs are [light, dark] unless a single value is shared.
  */
 
 import {defineTheme, defineSyntaxTheme} from '@pharos-ds/core/theme';
@@ -39,17 +28,17 @@ import {pharosIconRegistry} from './icons';
 const pharosSyntax = defineSyntaxTheme({
   name: 'pharos',
   tokens: {
-    keyword: ['#700084', '#efa8ff'], // purple T30/T80
-    string: ['#005600', '#a6d2a2'], // green (sat T30 / pastel T80)
+    keyword: ['#7C51A1', '#C4A3E0'], // brand purple
+    string: ['#005600', '#a6d2a2'], // green
     comment: ['#737373', '#a3a3a3'], // neutral
-    number: ['#6e3500', '#ffb37f'], // orange
-    function: ['#00458c', '#a0caff'], // blue T30/T80 H=255
-    type: ['#700084', '#efa8ff'], // purple
-    variable: ['#171717', '#e5e5e5'], // near-black / near-white
+    number: ['#C44A28', '#FFA07A'], // brand orange
+    function: ['#034694', '#8BB8F8'], // brand azul
+    type: ['#7C51A1', '#C4A3E0'], // brand purple
+    variable: ['#383838', '#e5e5e5'], // chumbo / near-white
     operator: ['#737373', '#a3a3a3'], // neutral
-    constant: ['#6e3500', '#ffb37f'], // orange
+    constant: ['#C44A28', '#FFA07A'], // brand orange
     tag: ['#89001a', '#ffaeaa'], // red
-    attribute: ['#584400', '#eec12f'], // yellow
+    attribute: ['#B87400', '#FFD066'], // brand yellow
     property: ['#005348', '#83dac9'], // teal
     punctuation: ['#a3a3a3', '#525252'], // neutral
     background: ['#fafafa', '#0a0a0a'],
@@ -132,9 +121,10 @@ export const pharosTheme = defineTheme({
     '--color-background-popover': ['#ffffff', '#1b1b1b'],
     '--color-background-muted': ['#f1f1f1', '#1b1b1b'],
 
-    // Accent + neutral surface tints (sit alongside backgrounds)
-    '--color-accent': ['#262626', '#ebebeb'],
-    '--color-accent-muted': ['#f1f1f1', '#262626'],
+    // Accent — brand azul Alexandria (#034694). Dark mode lifts to a
+    // brighter blue that keeps AA contrast on dark surfaces.
+    '--color-accent': ['#034694', '#6BA3F5'],
+    '--color-accent-muted': ['#E6EEF8', '#0346944D'],
     '--color-neutral': ['#0000000F', '#FFFFFF1A'],
 
     // Overlays (modal scrims, hover/pressed tints)
@@ -142,22 +132,22 @@ export const pharosTheme = defineTheme({
     '--color-overlay-hover': ['#0000000D', '#FFFFFF0D'],
     '--color-overlay-pressed': ['#0000001A', '#FFFFFF1A'],
 
-    // Text
-    '--color-text-primary': ['#171717', '#fafafa'],
+    // Text — chumbo #383838 (brandbook); avoid absolute black
+    '--color-text-primary': ['#383838', '#fafafa'],
     '--color-text-secondary': ['#737373', '#a3a3a3'],
     '--color-text-disabled': ['#a3a3a3', '#525252'],
-    '--color-text-accent': ['#262626', '#ebebeb'],
+    '--color-text-accent': ['#034694', '#6BA3F5'],
     '--color-on-dark': '#ffffff',
-    '--color-on-light': '#171717',
-    // Contrast: neutral accent is near-black (L) / near-white (D)
+    '--color-on-light': '#383838',
+    // White on brand azul (#034694 ≈ 8.5:1); dark text on lifted blue
     '--color-on-accent': ['#ffffff', '#171717'],
     '--color-on-success': ['#ffffff', '#171717'],
     '--color-on-error': ['#ffffff', '#171717'],
-    '--color-on-warning': '#171717',
+    '--color-on-warning': '#383838',
 
     // Icon
-    '--color-icon-accent': ['#262626', '#ebebeb'],
-    '--color-icon-primary': ['#171717', '#fafafa'],
+    '--color-icon-accent': ['#034694', '#6BA3F5'],
+    '--color-icon-primary': ['#383838', '#fafafa'],
     '--color-icon-secondary': ['#737373', '#a3a3a3'],
     '--color-icon-disabled': ['#a3a3a3', '#525252'],
 
@@ -241,25 +231,17 @@ export const pharosTheme = defineTheme({
     '--color-icon-red': ['#89001a', '#ff9e97'],
     '--color-text-red': ['#89001a', '#ffc6c1'],
 
-    // Orange  H=55 — source #d57113
-    '--color-background-orange': ['#fad0b5', '#ffa2583D'],
-    '--color-border-orange': ['#e6bda2', '#e2883e'],
-    '--color-icon-orange': ['#6e3500', '#ffa258'],
-    '--color-text-orange': ['#6e3500', '#ffc9a2'],
+    // Orange — brand #F26641 (Pantone 7579 C)
+    '--color-background-orange': ['#FDE0D6', '#F266413D'],
+    '--color-border-orange': ['#F5C4B3', '#F26641'],
+    '--color-icon-orange': ['#C44A28', '#FFA07A'],
+    '--color-text-orange': ['#C44A28', '#FFC4A8'],
 
-    // Yellow  H=90 — source #f8c723
-    // Light-mode butter-yellow pastel at H=85 C=0.085 L=0.90 — yellow
-    // sits at the green-cyan luminance peak so it feels louder than the
-    // other status hues at the same canonical L. Picker decision: pull
-    // L down one step (0.91→0.90) and C down to its identity floor
-    // (0.10→0.085, just above the bronze threshold) so it sits closer
-    // to red/blue's perceived brightness without losing yellow identity.
-    // Dark-mode comes from the canonical H=90 ramp for tonal-palette
-    // consistency.
-    '--color-background-yellow': ['#f8da9d', '#deb4333D'],
-    '--color-border-yellow': ['#e4c279', '#c0990e'],
-    '--color-icon-yellow': ['#584400', '#deb433'],
-    '--color-text-yellow': ['#584400', '#fdcf4f'],
+    // Yellow — brand #FAA61A / #FFF200
+    '--color-background-yellow': ['#FFF0CC', '#FAA61A3D'],
+    '--color-border-yellow': ['#F5D78A', '#FAA61A'],
+    '--color-icon-yellow': ['#B87400', '#FFD066'],
+    '--color-text-yellow': ['#B87400', '#FFE08A'],
 
     // Green  H=144 — source #358a3a
     '--color-background-green': ['#c5e5c0', '#84c9803D'],
@@ -286,18 +268,17 @@ export const pharosTheme = defineTheme({
     '--color-icon-cyan': ['#00505f', '#83c2d4'],
     '--color-text-cyan': ['#00505f', '#9edef0'],
 
-    // Blue  H=255 — source #0074e2
-    //   T50 #0074e2 reserved for filled Info badge / progressbar / inset hover.
-    '--color-background-blue': ['#c4ddfb', '#9eb7ff3D'],
-    '--color-border-blue': ['#b1c9e7', '#6d9cfe'],
-    '--color-icon-blue': ['#00458c', '#9eb7ff'],
-    '--color-text-blue': ['#00458c', '#c7d3ff'],
+    // Blue — brand primária #034694 (Pantone 286 C)
+    '--color-background-blue': ['#D6E4F5', '#6BA3F53D'],
+    '--color-border-blue': ['#A8C4E8', '#6BA3F5'],
+    '--color-icon-blue': ['#034694', '#8BB8F8'],
+    '--color-text-blue': ['#034694', '#C5DBFC'],
 
-    // Purple  H=320 — source #980fb2
-    '--color-background-purple': ['#eccef3', '#f297ff3D'],
-    '--color-border-purple': ['#d8bbdf', '#dd74f0'],
-    '--color-icon-purple': ['#700084', '#f297ff'],
-    '--color-text-purple': ['#700084', '#fac1ff'],
+    // Purple — brand destaque #7C51A1 (Pantone 7441 C)
+    '--color-background-purple': ['#EDE4F4', '#7C51A13D'],
+    '--color-border-purple': ['#D0BBE3', '#A67BC4'],
+    '--color-icon-purple': ['#7C51A1', '#C4A3E0'],
+    '--color-text-purple': ['#5C3A7A', '#DCC8F0'],
 
     // Pink  H=355 — source #b10e69
     '--color-background-pink': ['#fccadc', '#ff99c33D'],
@@ -316,7 +297,7 @@ export const pharosTheme = defineTheme({
     '--color-background-gray': ['#e5e5e5', 'var(--color-neutral)'],
     '--color-border-gray': ['#d4d4d4', '#262626'],
     '--color-icon-gray': ['#525252', '#a3a3a3'],
-    '--color-text-gray': ['#262626', '#e5e5e5'],
+    '--color-text-gray': ['#383838', '#e5e5e5'],
 
     // =========================================================================
     // Radius — slightly larger than default (kept as-is)
@@ -358,8 +339,8 @@ export const pharosTheme = defineTheme({
       '0 4px 6px light-dark(oklch(0 0 0 / 10%), oklch(0 0 0 / 50%)), ' +
       '0 12px 24px light-dark(oklch(0 0 0 / 15%), oklch(0 0 0 / 70%)), ' +
       'inset 0 0 0 1px light-dark(transparent, oklch(1 0 0 / 15%))',
-    '--shadow-inset-hover': 'inset 0px 0px 0px 2px #0074e24D',
-    '--shadow-inset-selected': 'inset 0px 0px 0px 2px #0074e280',
+    '--shadow-inset-hover': 'inset 0px 0px 0px 2px #0346944D',
+    '--shadow-inset-selected': 'inset 0px 0px 0px 2px #03469480',
     '--shadow-inset-success': 'inset 0px 0px 0px 2px #1981004D',
     '--shadow-inset-warning': 'inset 0px 0px 0px 2px #ffce2f4D',
     '--shadow-inset-error': 'inset 0px 0px 0px 2px #e33f4a4D',
@@ -399,9 +380,8 @@ export const pharosTheme = defineTheme({
       //          and tames the §4 vibration. Same dark-text-on-bright-bg
       //          treatment that warning yellow uses in both modes.
       'variant:info': {
-        // Light: T50 #0074e2 (palette saturated stop)
-        // Dark : T60 stop from dark-mode tonal palette of source #0074e2
-        backgroundColor: 'light-dark(#0074e2, #6d9cfe)',
+        // Brand azul Alexandria
+        backgroundColor: 'light-dark(#034694, #6BA3F5)',
         color: 'light-dark(#ffffff, #171717)',
       },
       'variant:neutral': {
@@ -495,10 +475,8 @@ export const pharosTheme = defineTheme({
     //   success → badge success bg  (green T45 / dark-ramp T60)
     //   warning → badge warning bg  (yellow T85, same hex both modes)
     //   error   → badge error bg    (red T55 / dark-ramp T60)
-    //   accent  → badge info bg     (blue T50 / dark-ramp T60) — the
-    //             StatusDot "accent" is the info/attention color, so it
-    //             pairs with the info badge rather than --color-accent
-    //             (near-black #262626, the darkest offender).
+    //   accent  → badge info bg     (brand azul) — StatusDot "accent"
+    //             is the info/attention color; pairs with info badge.
     //
     // `neutral` is intentionally NOT overridden: the neutral badge bg is a
     // near-invisible light gray (--color-background-gray #e5e5e5 / 10% white
@@ -510,7 +488,7 @@ export const pharosTheme = defineTheme({
       'variant:success': {backgroundColor: 'light-dark(#198100, #64af4c)'},
       'variant:warning': {backgroundColor: '#ffce2f'},
       'variant:error': {backgroundColor: 'light-dark(#e33f4a, #ff705d)'},
-      'variant:accent': {backgroundColor: 'light-dark(#0074e2, #6d9cfe)'},
+      'variant:accent': {backgroundColor: 'light-dark(#034694, #6BA3F5)'},
     },
 
     // =========================================================================
@@ -591,8 +569,8 @@ export const pharosTheme = defineTheme({
       // warning/error variants in the badge override above). Same hex
       // values; documented per role with palette provenance.
       'variant:accent': {
-        // Blue T50 saturated stop (= variant:info badge bg)
-        '--color-accent': '#0074e2',
+        // Brand azul (= variant:info badge bg)
+        '--color-accent': '#034694',
       },
       'variant:success': {
         // Green T45 saturated stop (= variant:success badge bg)
