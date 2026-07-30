@@ -129,7 +129,7 @@ If a property legitimately needs a hardcoded value:
 // In eslint.config.js
 {
   files: ["packages/core/src/**/*.{ts,tsx}"],
-  plugins: { '@pharos': pharosPlugin },
+  plugins: { '@pharos-ds': pharosPlugin },
   rules: {
     '@pharos-ds/no-hardcoded-styles': ['warn', {
       ignore: ['lineHeight']  // Allow hardcoded lineHeight

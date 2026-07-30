@@ -158,7 +158,7 @@ export default defineConfig(
     files: ["**/*.{ts,tsx}"],
     ignores: ["**/*.d.ts", "**/dist/**"],
     plugins: {
-      '@pharos': pharosEslintPlugin,
+      '@pharos-ds': pharosEslintPlugin,
     },
     rules: {
       '@pharos-ds/copyright-header': 'error',
@@ -331,7 +331,7 @@ export default defineConfig(
       "packages/cli/bin/**/*.mjs",
     ],
     plugins: {
-      '@pharos': pharosEslintPlugin,
+      '@pharos-ds': pharosEslintPlugin,
     },
     languageOptions: {
       sourceType: "module",
@@ -386,7 +386,7 @@ export default defineConfig(
       "packages/cli/bin/**/*.mjs",
     ],
     plugins: {
-      '@pharos': pharosEslintPlugin,
+      '@pharos-ds': pharosEslintPlugin,
     },
     rules: {
       '@pharos-ds/copyright-header': 'error',

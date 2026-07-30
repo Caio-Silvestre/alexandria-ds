@@ -256,7 +256,7 @@ const plugin = {
 // Strict config - for agents/CI (all errors)
 plugin.configs.strict = {
   plugins: {
-    '@pharos': plugin,
+    '@pharos-ds': plugin,
   },
   rules: {
     '@pharos-ds/no-hardcoded-styles': 'error',
@@ -287,7 +287,7 @@ plugin.configs.strict = {
 // Recommended config - for humans (all warnings)
 plugin.configs.recommended = {
   plugins: {
-    '@pharos': plugin,
+    '@pharos-ds': plugin,
   },
   rules: {
     '@pharos-ds/no-hardcoded-styles': 'warn',
