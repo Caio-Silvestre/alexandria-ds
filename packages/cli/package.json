@@ -87,7 +87,7 @@
     "typecheck:strict": "tsc --project tsconfig.strict.json"
   },
   "dependencies": {
-    "commander": "^12.1.0",
+    "commander": "^15.0.0",
     "jiti": "^2.7.0",
     "jscodeshift": "^17.3.0",
     "zod": "^4.4.3"
