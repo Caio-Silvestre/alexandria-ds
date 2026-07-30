@@ -1,5 +1,13 @@
 # @xds/theme-neutral
 
+# 1.0.1
+
+#### Fixes
+
+- Accent/primary passa a usar laranja Alexandria `#F26641` (dark `#FF8A5C`); azul `#034694` permanece na escala categórica / badge info
+
+---
+
 # 1.0.0
 
 #### New Features

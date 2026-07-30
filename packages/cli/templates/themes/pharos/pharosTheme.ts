@@ -3,13 +3,12 @@
 /**
  * Pharos Theme — Alexandria brand
  *
- * Brandbook (Março/2026) as source of truth for accent + neutrals:
- *   Azul primária  #034694
- *   Roxo destaque  #7C51A1
- *   Laranja        #F26641
- *   Amarelo #1     #FAA61A
- *   Amarelo #2     #FFF200
- *   Chumbo texto   #383838
+ * Brandbook (Março/2026) as source of truth for palette:
+ *   Laranja primary  #F26641  (UI accent / Button primary)
+ *   Azul             #034694  (categorical / info)
+ *   Roxo destaque    #7C51A1
+ *   Amarelo #1/#2    #FAA61A / #FFF200
+ *   Chumbo texto     #383838
  *
  * Surfaces stay near-white / soft gray (brand: avoid absolute black).
  * Categorical ramps keep OKLCH structure; brand stops replace blue /
@@ -121,10 +120,10 @@ export const pharosTheme = defineTheme({
     '--color-background-popover': ['#ffffff', '#1b1b1b'],
     '--color-background-muted': ['#f1f1f1', '#1b1b1b'],
 
-    // Accent — brand azul Alexandria (#034694). Dark mode lifts to a
-    // brighter blue that keeps AA contrast on dark surfaces.
-    '--color-accent': ['#034694', '#6BA3F5'],
-    '--color-accent-muted': ['#E6EEF8', '#0346944D'],
+    // Accent — brand laranja Alexandria (#F26641). Dark mode lifts for
+    // contrast on dark surfaces.
+    '--color-accent': ['#F26641', '#FF8A5C'],
+    '--color-accent-muted': ['#FDE0D6', '#F266414D'],
     '--color-neutral': ['#0000000F', '#FFFFFF1A'],
 
     // Overlays (modal scrims, hover/pressed tints)
@@ -136,17 +135,17 @@ export const pharosTheme = defineTheme({
     '--color-text-primary': ['#383838', '#fafafa'],
     '--color-text-secondary': ['#737373', '#a3a3a3'],
     '--color-text-disabled': ['#a3a3a3', '#525252'],
-    '--color-text-accent': ['#034694', '#6BA3F5'],
+    '--color-text-accent': ['#F26641', '#FF8A5C'],
     '--color-on-dark': '#ffffff',
     '--color-on-light': '#383838',
-    // White on brand azul (#034694 ≈ 8.5:1); dark text on lifted blue
+    // White on brand laranja; dark text on lifted orange in dark mode
     '--color-on-accent': ['#ffffff', '#171717'],
     '--color-on-success': ['#ffffff', '#171717'],
     '--color-on-error': ['#ffffff', '#171717'],
     '--color-on-warning': '#383838',
 
     // Icon
-    '--color-icon-accent': ['#034694', '#6BA3F5'],
+    '--color-icon-accent': ['#F26641', '#FF8A5C'],
     '--color-icon-primary': ['#383838', '#fafafa'],
     '--color-icon-secondary': ['#737373', '#a3a3a3'],
     '--color-icon-disabled': ['#a3a3a3', '#525252'],
@@ -268,7 +267,7 @@ export const pharosTheme = defineTheme({
     '--color-icon-cyan': ['#00505f', '#83c2d4'],
     '--color-text-cyan': ['#00505f', '#9edef0'],
 
-    // Blue — brand primária #034694 (Pantone 286 C)
+    // Blue — brand azul categórico / info #034694 (Pantone 286 C)
     '--color-background-blue': ['#D6E4F5', '#6BA3F53D'],
     '--color-border-blue': ['#A8C4E8', '#6BA3F5'],
     '--color-icon-blue': ['#034694', '#8BB8F8'],
@@ -339,8 +338,8 @@ export const pharosTheme = defineTheme({
       '0 4px 6px light-dark(oklch(0 0 0 / 10%), oklch(0 0 0 / 50%)), ' +
       '0 12px 24px light-dark(oklch(0 0 0 / 15%), oklch(0 0 0 / 70%)), ' +
       'inset 0 0 0 1px light-dark(transparent, oklch(1 0 0 / 15%))',
-    '--shadow-inset-hover': 'inset 0px 0px 0px 2px #0346944D',
-    '--shadow-inset-selected': 'inset 0px 0px 0px 2px #03469480',
+    '--shadow-inset-hover': 'inset 0px 0px 0px 2px #F266414D',
+    '--shadow-inset-selected': 'inset 0px 0px 0px 2px #F2664180',
     '--shadow-inset-success': 'inset 0px 0px 0px 2px #1981004D',
     '--shadow-inset-warning': 'inset 0px 0px 0px 2px #ffce2f4D',
     '--shadow-inset-error': 'inset 0px 0px 0px 2px #e33f4a4D',
@@ -475,8 +474,8 @@ export const pharosTheme = defineTheme({
     //   success → badge success bg  (green T45 / dark-ramp T60)
     //   warning → badge warning bg  (yellow T85, same hex both modes)
     //   error   → badge error bg    (red T55 / dark-ramp T60)
-    //   accent  → badge info bg     (brand azul) — StatusDot "accent"
-    //             is the info/attention color; pairs with info badge.
+    //   accent  → brand laranja primary — StatusDot "accent" follows
+    //             --color-accent (Button primary), not semantic info.
     //
     // `neutral` is intentionally NOT overridden: the neutral badge bg is a
     // near-invisible light gray (--color-background-gray #e5e5e5 / 10% white
@@ -488,7 +487,7 @@ export const pharosTheme = defineTheme({
       'variant:success': {backgroundColor: 'light-dark(#198100, #64af4c)'},
       'variant:warning': {backgroundColor: '#ffce2f'},
       'variant:error': {backgroundColor: 'light-dark(#e33f4a, #ff705d)'},
-      'variant:accent': {backgroundColor: 'light-dark(#034694, #6BA3F5)'},
+      'variant:accent': {backgroundColor: 'light-dark(#F26641, #FF8A5C)'},
     },
 
     // =========================================================================
@@ -569,8 +568,8 @@ export const pharosTheme = defineTheme({
       // warning/error variants in the badge override above). Same hex
       // values; documented per role with palette provenance.
       'variant:accent': {
-        // Brand azul (= variant:info badge bg)
-        '--color-accent': '#034694',
+        // Brand laranja (= primary / Button primary)
+        '--color-accent': '#F26641',
       },
       'variant:success': {
         // Green T45 saturated stop (= variant:success badge bg)
