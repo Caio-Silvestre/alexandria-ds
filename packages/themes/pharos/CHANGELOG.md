@@ -1,5 +1,19 @@
 # @xds/theme-neutral
 
+# 1.0.0
+
+#### New Features
+
+- Theme Pharos: alinhar accent, texto e tons categóricos à paleta oficial da Alexandria (#034694 azul, #383838 chumbo, destaques roxo/laranja/amarelo)
+
+#### Contributors
+
+Thanks to everyone who contributed to this release:
+
+- @Caio-Silvestre
+
+---
+
 # 0.1.9
 
 ---

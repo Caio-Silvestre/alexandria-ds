@@ -1,6 +1,6 @@
 {
   "name": "@pharos-ds/theme-butter",
-  "version": "0.1.9",
+  "version": "1.0.0",
   "displayName": "Butter Theme",
   "private": true,
   "description": "Warm, creamy yellows with a friendly blue accent. Playful enough for consumer surfaces, soft enough to stay readable.",
@@ -52,11 +52,11 @@
     "lucide-react": "^1.18.0"
   },
   "peerDependencies": {
-    "@pharos-ds/core": "0.1.9",
+    "@pharos-ds/core": "1.0.0",
     "react": ">=19"
   },
   "devDependencies": {
-    "@pharos-ds/cli": "0.1.9"
+    "@pharos-ds/cli": "1.0.0"
   },
   "module": "./dist/source.mjs"
 }

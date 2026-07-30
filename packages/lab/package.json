@@ -1,6 +1,6 @@
 {
   "name": "@pharos-ds/lab",
-  "version": "0.1.9",
+  "version": "1.0.0",
   "private": true,
   "description": "Experimental Pharos components — published to npm only under the @canary dist-tag for early testing; never released as a stable (latest) version.",
   "author": "Caio Silvestre",
@@ -58,7 +58,7 @@
   },
   "peerDependencies": {
     "@stylexjs/stylex": ">=0.10.0",
-    "@pharos-ds/core": "0.1.9",
+    "@pharos-ds/core": "1.0.0",
     "react": ">=19.0.0",
     "react-dom": ">=19.0.0",
     "lexical": "^0.46.0",
