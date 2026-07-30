@@ -1,0 +1,4 @@
+When Cursor auto-generates a Git commit message for this repository:
+- Write the message in Brazilian Portuguese
+- Use Conventional Commits (feat:, fix:, refactor:, chore:, etc.)
+- Keep it concise and objective (1-2 sentences)

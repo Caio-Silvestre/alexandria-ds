@@ -1,0 +1,100 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+
+import {describe, expect, it} from 'vitest';
+import {createConfig} from './config.mjs';
+import {createIntegration} from './integration.mjs';
+import {
+  PharosConfigSchema,
+  PharosIntegrationSchema,
+} from '../lib/config-schema.mjs';
+
+// createConfig/createIntegration are now pure typed-identity helpers: they
+// return their argument unchanged and perform NO runtime validation. Validation
+// happens at the LOAD boundary (loadModuleWithSchema against the schemas below),
+// so the rejection cases that used to assert factory throws now assert the
+// schema rejects the same shapes.
+
+describe('createConfig (typed identity)', () => {
+  it('returns the config unchanged', () => {
+    const config = {integrations: ['@acme/widgets']};
+    expect(createConfig(config)).toBe(config);
+    expect(createConfig({})).toEqual({});
+  });
+
+  it('does NOT validate — returns invalid shapes unchanged', () => {
+    const bogus = {packages: ['./libs']};
+    expect(createConfig(bogus)).toBe(bogus);
+    const badIntegrations = {integrations: '@acme/widgets'};
+    expect(createConfig(badIntegrations)).toBe(badIntegrations);
+  });
+});
+
+describe('PharosConfigSchema (load-boundary validation)', () => {
+  it('accepts a valid minimal config', () => {
+    expect(PharosConfigSchema.parse({})).toEqual({});
+    expect(
+      PharosConfigSchema.parse({integrations: ['@acme/widgets']}),
+    ).toEqual({integrations: ['@acme/widgets']});
+  });
+
+  it('accepts hooks.postCodemod with a buildCommand function', () => {
+    const config = {
+      hooks: {postCodemod: [{name: 'format', buildCommand: () => null}]},
+    };
+    expect(() => PharosConfigSchema.parse(config)).not.toThrow();
+  });
+
+  it('rejects unknown keys (strict)', () => {
+    expect(() => PharosConfigSchema.parse({packages: ['./libs']})).toThrow(
+      /packages|Unrecognized/,
+    );
+  });
+
+  it('rejects a non-array integrations field', () => {
+    expect(() =>
+      PharosConfigSchema.parse({integrations: '@acme/widgets'}),
+    ).toThrow();
+  });
+
+  it('rejects a non-URL issuesUrl', () => {
+    expect(() => PharosConfigSchema.parse({issuesUrl: 'not-a-url'})).toThrow();
+  });
+
+  it('rejects a postCodemod hook without buildCommand', () => {
+    expect(() =>
+      PharosConfigSchema.parse({hooks: {postCodemod: [{name: 'empty'}]}}),
+    ).toThrow();
+  });
+});
+
+describe('createIntegration (typed identity)', () => {
+  it('returns the integration unchanged', () => {
+    const integration = {components: './src'};
+    expect(createIntegration(integration)).toBe(integration);
+    expect(createIntegration({})).toEqual({});
+  });
+
+  it('does NOT validate — returns invalid shapes unchanged', () => {
+    const bogus = {name: '@acme/widgets'};
+    expect(createIntegration(bogus)).toBe(bogus);
+  });
+});
+
+describe('PharosIntegrationSchema (load-boundary validation)', () => {
+  it('accepts a valid minimal integration', () => {
+    expect(PharosIntegrationSchema.parse({components: './src'})).toEqual({
+      components: './src',
+    });
+    expect(PharosIntegrationSchema.parse({})).toEqual({});
+  });
+
+  it('rejects unknown keys (strict)', () => {
+    expect(() => PharosIntegrationSchema.parse({name: '@acme/widgets'})).toThrow(
+      /name|Unrecognized/,
+    );
+  });
+
+  it('rejects a non-URL issuesUrl', () => {
+    expect(() => PharosIntegrationSchema.parse({issuesUrl: 'nope'})).toThrow();
+  });
+});

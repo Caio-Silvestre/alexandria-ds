@@ -1,0 +1,10 @@
+/* Copyright (c) Meta Platforms, Inc. and affiliates. */
+
+@import "@pharos-ds/core/reset.css";
+@import "@pharos-ds/core/pharos.css";
+@import "@pharos-ds/theme-neutral/theme.css";
+
+/* StyleX app styles are injected here. The postcss plugin declares
+   reset, pharos-base, and pharos-theme as layersBefore so the full layer order
+   is: reset < pharos-base < pharos-theme < stylex app layers. */
+@stylex;

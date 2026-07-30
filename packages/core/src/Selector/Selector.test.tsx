@@ -1,0 +1,1423 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+
+/**
+ * @file Selector.test.tsx
+ * @input Uses vitest, @testing-library/react, @testing-library/user-event
+ * @output Unit tests for Selector
+ * @position Tests; validates Selector behavior
+ *
+ * SYNC: When Selector.tsx API changes, update these tests.
+ */
+
+import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import {Selector} from './Selector';
+import {SelectorOption} from './SelectorOption';
+import {Icon} from '../Icon';
+import {InputGroup, InputGroupText} from '../InputGroup';
+import {__resetLiveRegionsForTest} from '../hooks/useAnnounce';
+import {defineTheme} from '../theme/defineTheme';
+import {generateThemeCSSFlat} from '../theme/generateThemeRules';
+
+function politeRegion(): HTMLElement | null {
+  return document.querySelector('[data-pharos-live-region="polite"]');
+}
+
+// Mock showPopover and hidePopover methods since they're not implemented in jsdom
+beforeEach(() => {
+  HTMLElement.prototype.showPopover = vi.fn(function (this: HTMLElement) {
+    this.setAttribute('popover-open', '');
+    const event = new Event('toggle', {bubbles: false});
+    Object.defineProperty(event, 'newState', {value: 'open'});
+    this.dispatchEvent(event);
+  });
+  HTMLElement.prototype.hidePopover = vi.fn(function (this: HTMLElement) {
+    this.removeAttribute('popover-open');
+    const event = new Event('toggle', {bubbles: false});
+    Object.defineProperty(event, 'newState', {value: 'closed'});
+    this.dispatchEvent(event);
+  });
+  const originalMatches = HTMLElement.prototype.matches;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (HTMLElement.prototype as any).matches = function (
+    selector: string,
+  ): boolean {
+    if (selector === ':popover-open') {
+      return this.hasAttribute('popover-open');
+    }
+    return originalMatches.call(this, selector);
+  };
+});
+
+afterEach(() => {
+  __resetLiveRegionsForTest();
+});
+
+// Helper: jsdom popover content is in the DOM but may not be
+// "visible" in the accessibility tree. Use hidden: true to find it.
+const h = {hidden: true} as const;
+
+const OPTIONS = ['Apple', 'Banana', 'Cherry'];
+
+function rect({
+  top,
+  bottom,
+  left = 0,
+  right = 100,
+  width = right - left,
+  height = bottom - top,
+}: {
+  top: number;
+  bottom: number;
+  left?: number;
+  right?: number;
+  width?: number;
+  height?: number;
+}): DOMRect {
+  return {
+    x: left,
+    y: top,
+    top,
+    bottom,
+    left,
+    right,
+    width,
+    height,
+    toJSON: () => ({}),
+  };
+}
+
+function mockSelectorRects() {
+  const originalGetBoundingClientRect =
+    HTMLElement.prototype.getBoundingClientRect;
+  const originalInnerHeight = Object.getOwnPropertyDescriptor(
+    window,
+    'innerHeight',
+  );
+  HTMLElement.prototype.getBoundingClientRect = function () {
+    // The trigger is role="combobox" by default, or a plain button with
+    // aria-haspopup="listbox" in hasSearch mode — match either.
+    if (
+      this.getAttribute('role') === 'combobox' ||
+      this.getAttribute('aria-haspopup') === 'listbox'
+    ) {
+      return rect({top: 160, bottom: 190, height: 30});
+    }
+    if (this.getAttribute('role') === 'listbox') {
+      return rect({top: 190, bottom: 310, height: 120});
+    }
+    if (this.id.endsWith('-item-1')) {
+      return rect({top: 220, bottom: 250, height: 30});
+    }
+    return originalGetBoundingClientRect.call(this);
+  };
+  Object.defineProperty(window, 'innerHeight', {
+    value: 200,
+    configurable: true,
+  });
+  return () => {
+    HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    if (originalInnerHeight) {
+      Object.defineProperty(window, 'innerHeight', originalInnerHeight);
+    }
+  };
+}
+
+describe('Selector', () => {
+  it('renders with placeholder when no value', () => {
+    render(<Selector label="Fruit" options={OPTIONS} placeholder="Pick one" />);
+    expect(screen.getByRole('combobox')).toHaveTextContent('Pick one');
+  });
+
+  it('renders selected value label', () => {
+    render(
+      <Selector
+        label="Fruit"
+        options={OPTIONS}
+        value="Banana"
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.getByRole('combobox')).toHaveTextContent('Banana');
+  });
+
+  it('renders custom option endContent', async () => {
+    const user = userEvent.setup();
+    render(
+      <Selector
+        label="Role"
+        options={[{value: 'admin', label: 'Admin'}]}
+        value={undefined}
+        onChange={() => {}}
+        renderOption={option => (
+          <SelectorOption
+            label={option.label}
+            endContent={<span data-testid="option-badge">Owner</span>}
+          />
+        )}
+      />,
+    );
+
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.getByTestId('option-badge')).toHaveTextContent('Owner');
+  });
+
+  it('exposes the popup as a listbox, not a modal dialog', () => {
+    render(
+      <Selector
+        label="Fruit"
+        options={OPTIONS}
+        value="Banana"
+        onChange={() => {}}
+      />,
+    );
+    // The combobox trigger keeps DOM focus; the popup must expose its own
+    // role="listbox" and must not be wrapped in a role="dialog" aria-modal
+    // element, which would tell AT the focused trigger is inert.
+    expect(screen.getByRole('listbox', {hidden: true})).toBeInTheDocument();
+    expect(
+      screen.queryByRole('dialog', {hidden: true}),
+    ).not.toBeInTheDocument();
+    expect(
+      document.querySelector('[aria-modal="true"]'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('supports explicit menu placement', () => {
+    render(
+      <Selector
+        label="Fruit"
+        options={OPTIONS}
+        value="Banana"
+        onChange={() => {}}
+        placement="above"
+      />,
+    );
+    const popover = screen
+      .getByRole('listbox', {hidden: true})
+      .closest('[popover]');
+    expect(popover?.getAttribute('style')).toContain(
+      'position-area: self-block-start span-self-inline-end',
+    );
+  });
+
+  it('emits the direction-independent logical mapping under an RTL ancestor (#3389)', async () => {
+    // The self-* position-area keywords resolve against the popover's own
+    // inherited direction in the browser, so RTL emits the same string as
+    // LTR and the mirroring is pure CSS — jsdom can only assert the string.
+    const user = userEvent.setup();
+    render(
+      <div style={{direction: 'rtl'}}>
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value="Banana"
+          onChange={() => {}}
+        />
+      </div>,
+    );
+
+    await user.click(screen.getByRole('combobox'));
+
+    const popover = screen
+      .getByRole('listbox', {hidden: true})
+      .closest('[popover]');
+    expect(popover?.getAttribute('style')).toContain(
+      'position-area: self-block-end span-self-inline-end',
+    );
+  });
+
+  it('clamps the default selected-item overlay to the viewport', async () => {
+    const restoreRects = mockSelectorRects();
+    const user = userEvent.setup();
+    try {
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value="Banana"
+          onChange={() => {}}
+        />,
+      );
+
+      await user.click(screen.getByRole('combobox'));
+      const popover = screen
+        .getByRole('listbox', {hidden: true})
+        .closest('[popover]');
+      await waitFor(() => {
+        expect(popover?.getAttribute('style')).toContain(
+          'margin-block-start: -110px',
+        );
+      });
+    } finally {
+      restoreRects();
+    }
+  });
+
+  it('does not apply selected-item overlay offset when placement is explicit', async () => {
+    const restoreRects = mockSelectorRects();
+    const user = userEvent.setup();
+    try {
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value="Banana"
+          onChange={() => {}}
+          placement="above"
+        />,
+      );
+
+      await user.click(screen.getByRole('combobox'));
+      const popover = screen
+        .getByRole('listbox', {hidden: true})
+        .closest('[popover]');
+      await waitFor(() => {
+        expect(popover?.getAttribute('style')).not.toContain(
+          'margin-block-start',
+        );
+      });
+    } finally {
+      restoreRects();
+    }
+  });
+
+  describe('hasClear', () => {
+    it('shows selected value label when hasClear is enabled', () => {
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value="Banana"
+          onChange={() => {}}
+          hasClear
+        />,
+      );
+      expect(screen.getByRole('combobox')).toHaveTextContent('Banana');
+    });
+
+    it('shows clear button when hasClear is true and value is selected', () => {
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value="Banana"
+          onChange={() => {}}
+          hasClear
+        />,
+      );
+      expect(
+        screen.getByRole('button', {name: 'Clear Fruit'}),
+      ).toBeInTheDocument();
+    });
+
+    it('does not show clear button when value is null', () => {
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value={null}
+          onChange={() => {}}
+          hasClear
+        />,
+      );
+      expect(
+        screen.queryByRole('button', {name: 'Clear Fruit'}),
+      ).not.toBeInTheDocument();
+    });
+
+    it('does not show clear button when hasClear is false', () => {
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value="Banana"
+          onChange={() => {}}
+        />,
+      );
+      expect(
+        screen.queryByRole('button', {name: 'Clear Fruit'}),
+      ).not.toBeInTheDocument();
+    });
+
+    it('does not show clear button when disabled', () => {
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value="Banana"
+          onChange={() => {}}
+          hasClear
+          isDisabled
+        />,
+      );
+      expect(
+        screen.queryByRole('button', {name: 'Clear Fruit'}),
+      ).not.toBeInTheDocument();
+    });
+
+    it('calls onChange with null when clear is clicked', async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value="Banana"
+          onChange={onChange}
+          hasClear
+        />,
+      );
+      await user.click(screen.getByRole('button', {name: 'Clear Fruit'}));
+      expect(onChange).toHaveBeenCalledWith(null);
+    });
+
+    it('clears the value via Delete on the focused trigger', async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value="Banana"
+          onChange={onChange}
+          hasClear
+        />,
+      );
+      const trigger = screen.getByRole('combobox');
+      trigger.focus();
+      await user.keyboard('{Delete}');
+      expect(onChange).toHaveBeenCalledWith(null);
+    });
+
+    it('clears the value via Backspace on the focused trigger', async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value="Banana"
+          onChange={onChange}
+          hasClear
+        />,
+      );
+      const trigger = screen.getByRole('combobox');
+      trigger.focus();
+      await user.keyboard('{Backspace}');
+      expect(onChange).toHaveBeenCalledWith(null);
+    });
+
+    it('does not clear via Delete when hasClear is not set', async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value="Banana"
+          onChange={onChange}
+        />,
+      );
+      const trigger = screen.getByRole('combobox');
+      trigger.focus();
+      await user.keyboard('{Delete}');
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('shows placeholder after clearing', () => {
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value={null}
+          onChange={() => {}}
+          hasClear
+          placeholder="Select a fruit..."
+        />,
+      );
+      expect(screen.getByRole('combobox')).toHaveTextContent(
+        'Select a fruit...',
+      );
+    });
+
+    it('renders selected label with object options and hasClear', () => {
+      render(
+        <Selector
+          label="Fruit"
+          options={[
+            {value: 'apple', label: 'Red Apple'},
+            {value: 'banana', label: 'Yellow Banana'},
+          ]}
+          value="banana"
+          onChange={() => {}}
+          hasClear
+        />,
+      );
+      expect(screen.getByRole('combobox')).toHaveTextContent('Yellow Banana');
+    });
+  });
+
+  describe('hasSearch', () => {
+    it('renders search input when hasSearch is true', async () => {
+      const user = userEvent.setup();
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value="Apple"
+          onChange={() => {}}
+          hasSearch
+        />,
+      );
+      await user.click(screen.getByRole('button', {name: 'Fruit'}));
+      expect(screen.getByRole('combobox', h)).toBeInTheDocument();
+    });
+
+    it('wires the search input as the combobox with activedescendant (comboboxes-4)', async () => {
+      const user = userEvent.setup();
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value="Apple"
+          onChange={() => {}}
+          hasSearch
+        />,
+      );
+      const triggerBtn = screen.getByRole('button', {name: 'Fruit'});
+      // In hasSearch mode the trigger is a plain button, not a combobox.
+      expect(triggerBtn).not.toHaveAttribute('role', 'combobox');
+      await user.click(triggerBtn);
+      const search = screen.getByRole('combobox', h);
+      expect(search).toHaveAttribute('aria-autocomplete', 'list');
+      expect(search).toHaveAttribute('aria-expanded', 'true');
+      expect(search).toHaveAttribute('aria-controls');
+      // ArrowDown moves the highlight; the search input reports it via
+      // aria-activedescendant (previously silent on the trigger).
+      await user.keyboard('{ArrowDown}');
+      expect(search).toHaveAttribute('aria-activedescendant');
+    });
+
+    it('PageDown/PageUp jump the highlight to the last/first filtered option', async () => {
+      const user = userEvent.setup();
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value="Apple"
+          onChange={() => {}}
+          hasSearch
+        />,
+      );
+      await user.click(screen.getByRole('button', {name: 'Fruit'}));
+      const search = screen.getByRole('combobox', h);
+      // Filter to Apple and Banana so "last" means last *visible* option.
+      await user.type(search, 'a');
+      const options = screen.getAllByRole('option', h);
+      expect(options).toHaveLength(2);
+      await user.keyboard('{PageDown}');
+      expect(search).toHaveAttribute(
+        'aria-activedescendant',
+        options[options.length - 1].id,
+      );
+      await user.keyboard('{PageUp}');
+      expect(search).toHaveAttribute('aria-activedescendant', options[0].id);
+    });
+
+    it('Home/End move the search caret, not the option highlight', async () => {
+      const user = userEvent.setup();
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value="Apple"
+          onChange={() => {}}
+          hasSearch
+        />,
+      );
+      await user.click(screen.getByRole('button', {name: 'Fruit'}));
+      const search = screen.getByRole<HTMLInputElement>('combobox', h);
+      await user.type(search, 'an');
+      expect(search.selectionStart).toBe(2);
+      const activeBefore = search.getAttribute('aria-activedescendant');
+      // Home/End stay on the input for caret movement (APG editable
+      // combobox); the option highlight must not move.
+      await user.keyboard('{Home}');
+      expect(search.selectionStart).toBe(0);
+      expect(search.getAttribute('aria-activedescendant')).toBe(activeBefore);
+      await user.keyboard('{End}');
+      expect(search.selectionStart).toBe(2);
+      expect(search.getAttribute('aria-activedescendant')).toBe(activeBefore);
+    });
+
+    it('does not render search input when hasSearch is false', async () => {
+      const user = userEvent.setup();
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value="Apple"
+          onChange={() => {}}
+        />,
+      );
+      // hasSearch is false, so the trigger itself is the combobox and there is
+      // no separate search input inside the popup.
+      await user.click(screen.getByRole('combobox'));
+      expect(screen.queryByRole('searchbox', h)).not.toBeInTheDocument();
+    });
+
+    it('filters options by search query', async () => {
+      const user = userEvent.setup();
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value="Apple"
+          onChange={() => {}}
+          hasSearch
+        />,
+      );
+      await user.click(screen.getByRole('button', {name: 'Fruit'}));
+      await user.type(screen.getByRole('combobox', h), 'ban');
+      const options = screen.getAllByRole('option', h);
+      expect(options).toHaveLength(1);
+      expect(options[0]).toHaveTextContent('Banana');
+    });
+
+    it('shows empty state when no options match', async () => {
+      const user = userEvent.setup();
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value="Apple"
+          onChange={() => {}}
+          hasSearch
+        />,
+      );
+      await user.click(screen.getByRole('button', {name: 'Fruit'}));
+      await user.type(screen.getByRole('combobox', h), 'xyz');
+      expect(screen.queryAllByRole('option', h)).toHaveLength(0);
+      // Scope to the listbox: the polite live region also announces "No results
+      // found", so an unscoped query matches both the visible empty state and
+      // the a11y announcement.
+      const listbox = screen.getByRole('listbox', h);
+      expect(within(listbox).getByText('No results found')).toBeInTheDocument();
+    });
+
+    it('calls onChange when selecting a filtered option', async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value="Apple"
+          onChange={onChange}
+          hasSearch
+        />,
+      );
+      await user.click(screen.getByRole('button', {name: 'Fruit'}));
+      await user.type(screen.getByRole('combobox', h), 'ban');
+      await user.click(screen.getByRole('option', {name: /Banana/, ...h}));
+      expect(onChange).toHaveBeenCalledWith('Banana');
+    });
+
+    it('closes dropdown on Tab without preventing default focus movement', async () => {
+      const user = userEvent.setup();
+      render(
+        <>
+          <Selector
+            label="Fruit"
+            options={OPTIONS}
+            value="Apple"
+            onChange={() => {}}
+            hasSearch
+          />
+          <button type="button">Next</button>
+        </>,
+      );
+
+      // In hasSearch mode the trigger is a plain button (the popup's search
+      // input is the combobox); it still owns aria-expanded.
+      const trigger = screen.getByRole('button', {name: 'Fruit'});
+      await user.click(trigger);
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+      await user.keyboard('{Tab}');
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('uses custom search placeholder', async () => {
+      const user = userEvent.setup();
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value="Apple"
+          onChange={() => {}}
+          hasSearch
+          searchPlaceholder="Find a fruit..."
+        />,
+      );
+      await user.click(screen.getByRole('button', {name: 'Fruit'}));
+      expect(
+        screen.getByPlaceholderText('Find a fruit...'),
+      ).toBeInTheDocument();
+    });
+
+    describe('result announcements', () => {
+      it('announces the match count politely while searching', async () => {
+        const user = userEvent.setup();
+        render(
+          <Selector
+            label="Fruit"
+            options={OPTIONS}
+            value="Apple"
+            onChange={() => {}}
+            hasSearch
+          />,
+        );
+        await user.click(screen.getByRole('button', {name: 'Fruit'}));
+        // "a" matches Apple and Banana.
+        await user.type(screen.getByRole('combobox', h), 'a');
+        await waitFor(() => {
+          expect(politeRegion()).toHaveTextContent('2 results');
+        });
+      });
+
+      it('announces the singular form when one option matches', async () => {
+        const user = userEvent.setup();
+        render(
+          <Selector
+            label="Fruit"
+            options={OPTIONS}
+            value="Apple"
+            onChange={() => {}}
+            hasSearch
+          />,
+        );
+        await user.click(screen.getByRole('button', {name: 'Fruit'}));
+        // "ban" matches only Banana. Anchored so it cannot pass on "1 results".
+        await user.type(screen.getByRole('combobox', h), 'ban');
+        await waitFor(() => {
+          expect(politeRegion()).toHaveTextContent(/^1 result$/);
+        });
+      });
+
+      it('announces "No results found" when nothing matches', async () => {
+        const user = userEvent.setup();
+        render(
+          <Selector
+            label="Fruit"
+            options={OPTIONS}
+            value="Apple"
+            onChange={() => {}}
+            hasSearch
+          />,
+        );
+        await user.click(screen.getByRole('button', {name: 'Fruit'}));
+        await user.type(screen.getByRole('combobox', h), 'xyz');
+        await waitFor(() => {
+          expect(politeRegion()).toHaveTextContent('No results found');
+        });
+      });
+
+      it('does not announce results until the user searches', async () => {
+        const user = userEvent.setup();
+        render(
+          <Selector
+            label="Fruit"
+            options={OPTIONS}
+            value="Apple"
+            onChange={() => {}}
+            hasSearch
+          />,
+        );
+        // Popover closed: nothing announced.
+        expect(politeRegion()?.textContent ?? '').toBe('');
+        // Open with an empty query: still nothing announced.
+        await user.click(screen.getByRole('button', {name: 'Fruit'}));
+        expect(politeRegion()?.textContent ?? '').toBe('');
+      });
+    });
+
+    describe('grouped search', () => {
+      const GROUPED = [
+        {
+          type: 'section' as const,
+          title: 'Citrus',
+          options: [
+            {value: 'orange', label: 'Orange'},
+            {value: 'lemon', label: 'Lemon'},
+          ],
+        },
+        {
+          type: 'section' as const,
+          title: 'Berries',
+          options: [
+            {value: 'strawberry', label: 'Strawberry'},
+            {value: 'blueberry', label: 'Blueberry'},
+          ],
+        },
+      ];
+
+      it('keeps the group header above matching items while searching', async () => {
+        const user = userEvent.setup();
+        render(
+          <Selector
+            label="Fruit"
+            options={GROUPED}
+            onChange={() => {}}
+            hasSearch
+          />,
+        );
+        await user.click(screen.getByRole('button', {name: 'Fruit'}));
+        // "orange" only matches within the Citrus group.
+        await user.type(screen.getByRole('combobox', h), 'orange');
+
+        expect(
+          screen.getByRole('group', {name: 'Citrus', ...h}),
+        ).toBeInTheDocument();
+        const options = screen.getAllByRole('option', h);
+        expect(options).toHaveLength(1);
+        expect(options[0]).toHaveTextContent('Orange');
+      });
+
+      it('hides a group whose items have no match', async () => {
+        const user = userEvent.setup();
+        render(
+          <Selector
+            label="Fruit"
+            options={GROUPED}
+            onChange={() => {}}
+            hasSearch
+          />,
+        );
+        await user.click(screen.getByRole('button', {name: 'Fruit'}));
+        // "berry" only matches items inside the Berries group.
+        await user.type(screen.getByRole('combobox', h), 'berry');
+
+        expect(
+          screen.getByRole('group', {name: 'Berries', ...h}),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole('group', {name: 'Citrus', ...h}),
+        ).not.toBeInTheDocument();
+        expect(screen.getAllByRole('option', h)).toHaveLength(2);
+      });
+
+      it('lands keyboard focus on the correct option after filtering', async () => {
+        const user = userEvent.setup();
+        render(
+          <Selector
+            label="Fruit"
+            options={GROUPED}
+            onChange={() => {}}
+            hasSearch
+          />,
+        );
+        await user.click(screen.getByRole('button', {name: 'Fruit'}));
+        const search = screen.getByRole('combobox', h);
+        // "berry" leaves Strawberry, Blueberry (in that document order).
+        await user.type(search, 'berry');
+        const options = screen.getAllByRole('option', h);
+        expect(options.map(o => o.textContent)).toEqual([
+          'Strawberry',
+          'Blueberry',
+        ]);
+        await user.keyboard('{ArrowDown}');
+        expect(search).toHaveAttribute('aria-activedescendant', options[0].id);
+        await user.keyboard('{ArrowDown}');
+        expect(search).toHaveAttribute('aria-activedescendant', options[1].id);
+      });
+
+      it('shows the empty state when no group has a match', async () => {
+        const user = userEvent.setup();
+        render(
+          <Selector
+            label="Fruit"
+            options={GROUPED}
+            onChange={() => {}}
+            hasSearch
+          />,
+        );
+        await user.click(screen.getByRole('button', {name: 'Fruit'}));
+        await user.type(screen.getByRole('combobox', h), 'zzz');
+        expect(screen.queryAllByRole('option', h)).toHaveLength(0);
+        expect(
+          screen.queryByRole('group', {name: 'Citrus', ...h}),
+        ).not.toBeInTheDocument();
+        const listbox = screen.getByRole('listbox', h);
+        expect(
+          within(listbox).getByText('No results found'),
+        ).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('keyboard accessibility', () => {
+    it('trigger is focusable via Tab when enabled', async () => {
+      const user = userEvent.setup();
+      render(<Selector label="Fruit" options={OPTIONS} />);
+
+      await user.tab();
+      expect(screen.getByRole('combobox')).toHaveFocus();
+    });
+
+    it('trigger is not focusable when disabled', () => {
+      render(<Selector label="Fruit" options={OPTIONS} isDisabled />);
+      expect(screen.getByRole('combobox')).toHaveAttribute('tabIndex', '-1');
+    });
+
+    it('opens the listbox with ArrowDown from a focused trigger', async () => {
+      const user = userEvent.setup();
+      render(<Selector label="Fruit" options={OPTIONS} />);
+
+      const trigger = screen.getByRole('combobox');
+      await user.tab();
+      expect(trigger).toHaveFocus();
+
+      await user.keyboard('{ArrowDown}');
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('End/Home jump the highlight to the last/first option (non-search)', async () => {
+      const user = userEvent.setup();
+      render(<Selector label="Fruit" options={OPTIONS} />);
+
+      const trigger = screen.getByRole('combobox');
+      await user.click(trigger);
+      const options = screen.getAllByRole('option', h);
+
+      await user.keyboard('{End}');
+      expect(trigger).toHaveAttribute(
+        'aria-activedescendant',
+        options[options.length - 1].id,
+      );
+      await user.keyboard('{Home}');
+      expect(trigger).toHaveAttribute('aria-activedescendant', options[0].id);
+    });
+
+    it('opens and selects an option with Enter (no mouse)', async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(<Selector label="Fruit" options={OPTIONS} onChange={onChange} />);
+
+      await user.tab();
+      await user.keyboard('{Enter}'); // open
+      await user.keyboard('{ArrowDown}'); // move highlight
+      await user.keyboard('{Enter}'); // select
+
+      expect(onChange).toHaveBeenCalled();
+    });
+
+    it('clear button is reachable by keyboard', () => {
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          value="Apple"
+          onChange={() => {}}
+          hasClear
+        />,
+      );
+      const clear = screen.getByRole('button', {name: 'Clear Fruit'});
+      expect(clear).not.toHaveAttribute('tabIndex', '-1');
+    });
+
+    it('scrolls the highlighted option into view during arrow navigation', async () => {
+      const scrollIntoView = vi.fn();
+      Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+        configurable: true,
+        value: scrollIntoView,
+      });
+      try {
+        const user = userEvent.setup();
+        const longOptions = Array.from(
+          {length: 20},
+          (_, i) => `Option ${i + 1}`,
+        );
+        render(<Selector label="Fruit" options={longOptions} />);
+
+        await user.tab();
+        await user.keyboard('{Enter}'); // open
+        scrollIntoView.mockClear();
+        await user.keyboard('{ArrowDown}'); // move highlight
+        await user.keyboard('{ArrowDown}');
+
+        expect(scrollIntoView).toHaveBeenCalledWith({block: 'nearest'});
+      } finally {
+        delete (HTMLElement.prototype as unknown as {scrollIntoView?: unknown})
+          .scrollIntoView;
+      }
+    });
+  });
+
+  describe('InputGroup integration', () => {
+    it('uses the group Field chrome and composes group and selector labels', () => {
+      render(
+        <InputGroup
+          label="Destination"
+          description="Where the alert should route"
+          status={{type: 'error', message: 'Destination is required'}}>
+          <InputGroupText>#</InputGroupText>
+          <Selector
+            label="Channel"
+            isLabelHidden
+            options={OPTIONS}
+            placeholder="Choose a channel"
+          />
+        </InputGroup>,
+      );
+
+      const group = screen.getByRole('group', {name: 'Destination'});
+      const groupLabelID = group.getAttribute('aria-labelledby');
+      const trigger = screen.getByRole('combobox', {
+        name: 'Destination Channel',
+      });
+      const labelledByIDs =
+        trigger.getAttribute('aria-labelledby')?.split(' ') ?? [];
+
+      expect(labelledByIDs).toHaveLength(2);
+      expect(labelledByIDs[0]).toBe(groupLabelID);
+      expect(document.getElementById(labelledByIDs[1])).toHaveTextContent(
+        'Channel',
+      );
+      expect(trigger).toHaveAttribute(
+        'aria-describedby',
+        group.getAttribute('aria-describedby'),
+      );
+      expect(screen.getByText('#')).toBeInTheDocument();
+    });
+
+    it('keeps disabled reasons described when grouped', () => {
+      render(
+        <InputGroup label="Destination">
+          <InputGroupText>#</InputGroupText>
+          <Selector
+            label="Channel"
+            isLabelHidden
+            options={OPTIONS}
+            isDisabled
+            disabledMessage="Choose a project first"
+          />
+        </InputGroup>,
+      );
+
+      const trigger = screen.getByRole('combobox', {
+        name: 'Destination Channel',
+      });
+      const tooltip = screen.getByRole('tooltip', h);
+
+      expect(trigger).not.toBeDisabled();
+      expect(trigger).toHaveAttribute('aria-disabled', 'true');
+      expect(trigger.getAttribute('aria-describedby')).toContain(tooltip.id);
+    });
+  });
+
+  describe('disabledMessage', () => {
+    it('shows the reason tooltip on hover when disabled with a reason', async () => {
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          isDisabled
+          disabledMessage="You need the Editor role"
+          data-testid="fruit-selector"
+        />,
+      );
+
+      const container = screen.getByTestId('fruit-selector');
+      const tooltip = screen.getByRole('tooltip', h);
+      expect(tooltip).toHaveTextContent('You need the Editor role');
+
+      fireEvent.mouseEnter(container);
+      await waitFor(() => {
+        expect(tooltip).toHaveAttribute('popover-open');
+      });
+
+      fireEvent.mouseLeave(container);
+      await waitFor(() => {
+        expect(tooltip).not.toHaveAttribute('popover-open');
+      });
+    });
+
+    it('shows the reason tooltip on keyboard focus', async () => {
+      const user = userEvent.setup();
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          isDisabled
+          disabledMessage="You need the Editor role"
+        />,
+      );
+
+      const tooltip = screen.getByRole('tooltip', h);
+      await user.tab();
+      expect(screen.getByRole('combobox')).toHaveFocus();
+      await waitFor(() => {
+        expect(tooltip).toHaveAttribute('popover-open');
+      });
+    });
+
+    it('does not render a tooltip when not disabled', () => {
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          disabledMessage="You need the Editor role"
+        />,
+      );
+      expect(screen.queryByRole('tooltip', h)).not.toBeInTheDocument();
+    });
+
+    it('does not render a tooltip when disabled without a reason', () => {
+      render(<Selector label="Fruit" options={OPTIONS} isDisabled />);
+      expect(screen.queryByRole('tooltip', h)).not.toBeInTheDocument();
+    });
+
+    it('keeps the trigger focusable via aria-disabled when a reason is provided', () => {
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          isDisabled
+          disabledMessage="You need the Editor role"
+        />,
+      );
+      const trigger = screen.getByRole('combobox');
+      expect(trigger).not.toBeDisabled();
+      expect(trigger).toHaveAttribute('aria-disabled', 'true');
+      expect(trigger).toHaveAttribute('tabIndex', '0');
+    });
+
+    it('links the reason tooltip from the trigger via aria-describedby', () => {
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          isDisabled
+          disabledMessage="You need the Editor role"
+        />,
+      );
+      const trigger = screen.getByRole('combobox');
+      const tooltip = screen.getByRole('tooltip', h);
+      expect(trigger.getAttribute('aria-describedby')).toContain(tooltip.id);
+    });
+
+    it('blocks activation while focusable-disabled', async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(
+        <Selector
+          label="Fruit"
+          options={OPTIONS}
+          onChange={onChange}
+          isDisabled
+          disabledMessage="You need the Editor role"
+        />,
+      );
+
+      const trigger = screen.getByRole('combobox');
+      await user.click(trigger);
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+      await user.keyboard('{Enter}');
+      await user.keyboard('{ArrowDown}');
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('remains non-focusable when disabled without a reason', () => {
+      render(<Selector label="Fruit" options={OPTIONS} isDisabled />);
+      const trigger = screen.getByRole('combobox');
+      expect(trigger).toBeDisabled();
+      expect(trigger).toHaveAttribute('tabIndex', '-1');
+    });
+  });
+  describe('form participation', () => {
+    it('submits the selected value under htmlName', () => {
+      const {container} = render(
+        <form>
+          <Selector
+            label="Fruit"
+            htmlName="fruit"
+            options={OPTIONS}
+            value="Banana"
+          />
+        </form>,
+      );
+      const data = new FormData(container.querySelector('form')!);
+      expect(data.get('fruit')).toBe('Banana');
+    });
+
+    it('submits an empty string when nothing is selected', () => {
+      const {container} = render(
+        <form>
+          <Selector label="Fruit" htmlName="fruit" options={OPTIONS} />
+        </form>,
+      );
+      const data = new FormData(container.querySelector('form')!);
+      expect(data.get('fruit')).toBe('');
+    });
+
+    it('is excluded from form data when disabled', () => {
+      const {container} = render(
+        <form>
+          <Selector
+            label="Fruit"
+            htmlName="fruit"
+            options={OPTIONS}
+            value="Banana"
+            isDisabled
+          />
+        </form>,
+      );
+      expect([
+        ...new FormData(container.querySelector('form')!).keys(),
+      ]).toEqual([]);
+    });
+  });
+});
+
+describe('Selector statusVariant forwarding', () => {
+  it('defaults to attached (status renders with data-variant="attached")', () => {
+    const {container} = render(
+      <Selector
+        label="Fruit"
+        options={['Apple', 'Banana']}
+        status={{type: 'error', message: 'Required'}}
+      />,
+    );
+    expect(container.querySelector('.pharos-field-status')).toHaveAttribute(
+      'data-variant',
+      'attached',
+    );
+  });
+
+  it('forwards statusVariant="detached" to the underlying Field status', () => {
+    const {container} = render(
+      <Selector
+        label="Fruit"
+        options={['Apple', 'Banana']}
+        status={{type: 'error', message: 'Required'}}
+        statusVariant="detached"
+      />,
+    );
+    expect(container.querySelector('.pharos-field-status')).toHaveAttribute(
+      'data-variant',
+      'detached',
+    );
+  });
+});
+
+describe('Selector clear icon theme target', () => {
+  // Resolve the clear glyph span (the pharos-icon element inside the clear
+  // button), independent of the theme target class.
+  const getClearIcon = (): HTMLElement => {
+    const button = screen.getByRole('button', {name: 'Clear Fruit'});
+    const icon = button.querySelector('.pharos-icon');
+    if (icon == null) {
+      throw new Error('clear icon not found');
+    }
+    return icon as HTMLElement;
+  };
+
+  it('renders the pharos-selector-clear-icon target on the clear glyph', () => {
+    render(
+      <Selector
+        label="Fruit"
+        options={OPTIONS}
+        value="Banana"
+        onChange={() => {}}
+        hasClear
+      />,
+    );
+    // The stable theme target lands on the icon element itself (not the
+    // button), so a theme can restyle just this glyph (color, size, hover)
+    // via `defineTheme` — a button-level target could not reach the icon's
+    // own color/size.
+    const icon = getClearIcon();
+    expect(icon).toHaveClass('pharos-selector-clear-icon');
+    expect(icon).toHaveClass('pharos-icon');
+  });
+
+  it('keeps the clear button functional alongside the target', () => {
+    const onChange = vi.fn();
+    render(
+      <Selector
+        label="Fruit"
+        options={OPTIONS}
+        value="Banana"
+        onChange={onChange}
+        hasClear
+      />,
+    );
+    const clear = screen.getByRole('button', {name: 'Clear Fruit'});
+    expect(clear.tagName).toBe('BUTTON');
+    fireEvent.click(clear);
+    expect(onChange).toHaveBeenCalledWith(null);
+  });
+
+  it('renders the default icon (secondary color, sm size) byte-identically', () => {
+    // Pixel-identical default guard: the clear glyph must carry the exact same
+    // StyleX color/size classes as a standalone secondary/sm icon. The added
+    // target class is purely additive — it changes nothing until a theme
+    // targets it.
+    render(
+      <Selector
+        label="Fruit"
+        options={OPTIONS}
+        value="Banana"
+        onChange={() => {}}
+        hasClear
+      />,
+    );
+    const icon = getClearIcon();
+
+    const {container: refContainer} = render(
+      <Icon icon="close" size="sm" color="secondary" />,
+    );
+    const refIcon = refContainer.querySelector('.pharos-icon') as HTMLElement;
+
+    const styleClasses = (el: HTMLElement) =>
+      el.className
+        .split(' ')
+        .filter(c => c !== 'pharos-selector-clear-icon')
+        .sort();
+
+    expect(styleClasses(icon)).toEqual(styleClasses(refIcon));
+  });
+
+  it('exposes selector-clear-icon so a theme reaches the icon color, size, and hover', () => {
+    // jsdom cannot resolve the @layer cascade, so the DOM-class assertion above
+    // (target lands on the icon element) plus this generation assertion (the
+    // theme emits same-element icon rules in @layer pharos-theme) together
+    // prove the seam: a same-element theme rule wins over the icon's own
+    // base-layer color/size.
+    const theme = defineTheme({
+      name: 'selector-clear-icon-test',
+      components: {
+        'selector-clear-icon': {
+          base: {
+            width: '12px',
+            height: '12px',
+            fontSize: '12px',
+            color: 'var(--color-icon-secondary)',
+            ':hover': {color: 'var(--color-icon-primary)'},
+          },
+        },
+      },
+    });
+    const css = generateThemeCSSFlat(theme);
+    expect(css).toContain('.pharos-selector-clear-icon {');
+    expect(css).toContain('width: 12px');
+    expect(css).toContain('height: 12px');
+    expect(css).toContain('.pharos-selector-clear-icon:hover {');
+    expect(css).toContain('color: var(--color-icon-primary)');
+  });
+});
+
+describe('Selector indicator (chevron) icon theme target', () => {
+  const getIndicatorIcon = (container: HTMLElement): HTMLElement => {
+    // The chevron is the only glyph carrying the indicator target class.
+    const icon = container.querySelector('.pharos-selector-indicator-icon');
+    if (icon == null) {
+      throw new Error('indicator icon not found');
+    }
+    return icon as HTMLElement;
+  };
+
+  it('renders the pharos-selector-indicator-icon target on the chevron glyph', () => {
+    const {container} = render(
+      <Selector label="Fruit" options={OPTIONS} onChange={() => {}} />,
+    );
+    // The stable theme target lands on the icon element itself (not the trigger
+    // button), so a theme can restyle just this glyph (color, size, hover) —
+    // and each open/closed state — via `defineTheme`. A button-level target
+    // could not reach the icon's own color/size.
+    const icon = getIndicatorIcon(container);
+    expect(icon).toHaveClass('pharos-selector-indicator-icon');
+    expect(icon).toHaveClass('pharos-icon');
+    // Open/closed state is reflected so a theme can target each state alone.
+    expect(icon).toHaveAttribute('data-state', 'collapsed');
+  });
+
+  it('reflects the expanded state on the chevron when the popover is open', async () => {
+    const user = userEvent.setup();
+    const {container} = render(
+      <Selector label="Fruit" options={OPTIONS} onChange={() => {}} />,
+    );
+    await user.click(screen.getByRole('combobox'));
+    await waitFor(() => {
+      expect(getIndicatorIcon(container)).toHaveAttribute(
+        'data-state',
+        'expanded',
+      );
+    });
+  });
+
+  it('renders the default icon (inherit color, sm size) byte-identically', () => {
+    // Pixel-identical default guard: the chevron glyph must carry the exact
+    // same StyleX color/size classes as a standalone inherit/sm icon. The added
+    // target class + data-state are purely additive — they change nothing until
+    // a theme targets them.
+    const {container} = render(
+      <Selector label="Fruit" options={OPTIONS} onChange={() => {}} />,
+    );
+    const icon = getIndicatorIcon(container);
+
+    const {container: refContainer} = render(
+      <Icon icon="chevronDown" size="sm" color="inherit" />,
+    );
+    const refIcon = refContainer.querySelector('.pharos-icon') as HTMLElement;
+
+    // Exclude the additive theme-target classes (the stable target + its
+    // reflected state class) so only the StyleX color/size classes remain.
+    const themeTargetClasses = new Set([
+      'pharos-selector-indicator-icon',
+      'collapsed',
+      'expanded',
+    ]);
+    const styleClasses = (el: HTMLElement) =>
+      el.className
+        .split(' ')
+        .filter(c => !themeTargetClasses.has(c))
+        .sort();
+
+    expect(styleClasses(icon)).toEqual(styleClasses(refIcon));
+  });
+
+  it('exposes selector-indicator-icon so a theme reaches the icon size and per-state color', () => {
+    // jsdom cannot resolve the @layer cascade, so the DOM-class assertions
+    // above (target lands on the icon element) plus this generation assertion
+    // (the theme emits same-element icon rules in @layer pharos-theme) together
+    // prove the seam: a same-element theme rule wins over the icon's own
+    // base-layer color/size.
+    const theme = defineTheme({
+      name: 'selector-indicator-icon-test',
+      components: {
+        'selector-indicator-icon': {
+          base: {width: '14px', height: '14px', fontSize: '14px'},
+          'state:expanded': {color: 'var(--color-icon-primary)'},
+        },
+      },
+    });
+    const css = generateThemeCSSFlat(theme);
+    expect(css).toContain('.pharos-selector-indicator-icon {');
+    expect(css).toContain('width: 14px');
+    expect(css).toContain('height: 14px');
+    expect(css).toContain('.pharos-selector-indicator-icon.expanded');
+    expect(css).toContain('color: var(--color-icon-primary)');
+  });
+});

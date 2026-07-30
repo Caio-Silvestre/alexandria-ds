@@ -1,0 +1,47 @@
+{
+  "name": "@pharos-ds/sandbox",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build:deps": "pnpm -F @pharos-ds/theme-neutral build && pnpm -F @pharos-ds/theme-matcha build && pnpm -F @pharos-ds/theme-stone build && pnpm -F @pharos-ds/theme-gothic build && pnpm -F @pharos-ds/theme-chocolate build && pnpm -F @pharos-ds/theme-y2k build && pnpm -F @pharos-ds/theme-butter build",
+    "generate:changelog": "node scripts/generate-changelog.js",
+    "generate:cli": "node scripts/generate-cli-registry.mjs",
+    "generate:xle": "node scripts/generate-xle-registry.mjs && node scripts/generate-xle-tokenizer.mjs",
+    "generate": "node ../../scripts/sync-templates.js && pnpm generate:changelog && pnpm generate:cli && node scripts/generate-foundation-docs.mjs && pnpm generate:xle",
+    "dev": "pnpm generate && (node ../../scripts/sync-templates.js --watch & next dev)",
+    "build": "pnpm generate && next build",
+    "start": "next start",
+    "postinstall": "pharos init --features agents"
+  },
+  "dependencies": {
+    "@heroicons/react": "^2.2.0",
+    "@stylexjs/stylex": "^0.19.0",
+    "@pharos-ds/charts": "*",
+    "@pharos-ds/cli": "*",
+    "@pharos-ds/core": "*",
+    "@pharos-ds/lab": "*",
+    "@pharos-ds/theme-neutral": "*",
+    "@pharos-ds/theme-matcha": "*",
+    "next": "^15.5.16",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "recharts": "^3.9.2",
+    "@pharos-ds/theme-stone": "*",
+    "@pharos-ds/theme-gothic": "*",
+    "@pharos-ds/theme-chocolate": "*",
+    "@pharos-ds/theme-y2k": "*",
+    "@pharos-ds/theme-butter": "*"
+  },
+  "devDependencies": {
+    "@babel/preset-react": "^8.0.1",
+    "@babel/preset-typescript": "^7.29.7",
+    "@stylexjs/babel-plugin": "^0.19.0",
+    "@stylexjs/postcss-plugin": "^0.19.0",
+    "@types/node": "^25.9.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "commander": "^12.1.0",
+    "typescript": "^6.0.3",
+    "@pharos-ds/build": "*"
+  }
+}

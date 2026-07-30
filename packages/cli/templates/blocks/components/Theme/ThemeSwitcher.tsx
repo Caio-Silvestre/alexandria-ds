@@ -1,0 +1,73 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+
+'use client';
+
+import {useState} from 'react';
+import {Theme, defineTheme} from '@pharos-ds/core/theme';
+import {Card} from '@pharos-ds/core/Card';
+import {Button} from '@pharos-ds/core/Button';
+import {Section} from '@pharos-ds/core/Section';
+import {Stack} from '@pharos-ds/core/Layout';
+import {Selector} from '@pharos-ds/core/Selector';
+import {Heading, Text} from '@pharos-ds/core/Text';
+
+const warmTheme = defineTheme({
+  name: 'warm-docs',
+  tokens: {
+    '--color-accent': ['#D97706', '#FBBF24'],
+    '--color-background-surface': ['#FFF7ED', '#1F1300'],
+    '--color-background-card': ['#FFFBEB', '#2A1A05'],
+    '--color-text-primary': ['#3B2F15', '#FEF3C7'],
+    '--color-text-secondary': ['#92400E', '#FCD34D'],
+    '--color-border': ['#FED7AA', '#92400E66'],
+    '--radius-container': '20px',
+  },
+});
+
+const forestTheme = defineTheme({
+  name: 'forest-docs',
+  tokens: {
+    '--color-accent': ['#15803D', '#86EFAC'],
+    '--color-background-surface': ['#F0FDF4', '#052E16'],
+    '--color-background-card': ['#FFFFFF', '#0F3D24'],
+    '--color-text-primary': ['#052E16', '#DCFCE7'],
+    '--color-text-secondary': ['#166534', '#BBF7D0'],
+    '--color-border': ['#BBF7D0', '#15803D66'],
+    '--radius-container': '8px',
+  },
+});
+const themes = {
+  Warm: warmTheme,
+  Forest: forestTheme,
+};
+
+type ThemeName = keyof typeof themes;
+
+export default function ThemeSwitcher() {
+  const [themeName, setThemeName] = useState<ThemeName>('Warm');
+
+  return (
+    <Section variant="muted" padding={4} maxWidth={420}>
+      <Stack direction="vertical" gap={3}>
+        <Selector
+          label="Theme"
+          value={themeName}
+          options={Object.keys(themes)}
+          onChange={next => setThemeName(next as ThemeName)}
+        />
+        <Theme theme={themes[themeName]}>
+          <Card padding={4} width="100%">
+            <Stack direction="vertical" gap={3}>
+              <Heading level={4}>{themeName} preview</Heading>
+              <Text type="body" color="secondary">
+                Switching the theme object updates all tokens and component
+                styles below the provider.
+              </Text>
+              <Button label="Save changes" />
+            </Stack>
+          </Card>
+        </Theme>
+      </Stack>
+    </Section>
+  );
+}

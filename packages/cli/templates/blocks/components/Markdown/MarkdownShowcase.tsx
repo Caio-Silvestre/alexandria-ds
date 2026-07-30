@@ -1,0 +1,28 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+
+'use client';
+
+import {Markdown} from '@pharos-ds/core/Markdown';
+import {Center} from '@pharos-ds/core/Center';
+
+const content = [
+  '# Markdown Demo',
+  '',
+  'Renders **markdown** with *design-system-consistent* styling.',
+  '',
+  '## Features',
+  '',
+  '- Headings mapped to the Pharos type scale',
+  '- **Bold**, *italic*, and ~~strikethrough~~ text',
+  '- [Links](https://example.com) with external detection',
+  '',
+  '> Block quote indented text',
+].join('\n');
+
+export default function MarkdownShowcase() {
+  return (
+    <Center width={400}>
+      <Markdown>{content}</Markdown>
+    </Center>
+  );
+}

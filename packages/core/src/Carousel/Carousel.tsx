@@ -1,0 +1,491 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+
+'use client';
+
+/**
+ * @file Carousel.tsx
+ * @input Uses React, StyleX, useScrollOverflow, useLayer, Button, Icon, theme tokens
+ * @output Exports Carousel component
+ * @position Horizontal scroll container with fade-edge overflow indication,
+ *   optional prev/next buttons on the top layer, scroll-snap, a 1px
+ *   visual bleed allowance for child selection indicators, and Shift + wheel
+ *   mapping so mouse users can scroll horizontally. Exposes APG
+ *   carousel semantics: the root is a labelled region with
+ *   aria-roledescription="carousel" and each item wrapper is a group with
+ *   aria-roledescription="slide" named "Slide N of M".
+ *
+ * SYNC: When modified, update:
+ * - /packages/core/src/Carousel/index.ts (exports)
+ * - /apps/storybook/stories/Carousel.stories.tsx
+ * - /packages/cli/templates/blocks/components/Carousel/ (showcase blocks)
+ */
+
+import {
+  type ReactNode,
+  useRef,
+  useCallback,
+  useEffect,
+  Children,
+  isValidElement,
+} from 'react';
+import * as stylex from '@stylexjs/stylex';
+import {
+  spacingVars,
+  colorVars,
+  shadowVars,
+  radiusVars,
+  durationVars,
+  easeVars,
+} from '../theme/tokens.stylex';
+import {Button} from '../Button';
+import {Icon} from '../Icon';
+import {useLayer} from '../Layer';
+import {useScrollOverflow} from '../hooks/useScrollOverflow';
+import {isRtlElement} from '../hooks/isRtlElement';
+import type {BaseProps} from '../BaseProps';
+import {mergeProps, mergeRefs, rtlStyles} from '../utils';
+import type {SpacingStep} from '../utils/types';
+import {themeProps} from '../utils/themeProps';
+import {useTranslator} from '../i18n';
+
+export interface CarouselProps extends BaseProps<HTMLDivElement> {
+  ref?: React.Ref<HTMLDivElement>;
+  /** Carousel items — rendered in a horizontal scroll container. */
+  children: ReactNode;
+  /**
+   * Gap between items using spacing scale tokens.
+   * @default 1
+   */
+  gap?: 0 | 0.5 | 1 | 1.5 | 2 | 3 | 4;
+  /**
+   * Show prev/next navigation buttons when content is scrollable.
+   * @default true
+   */
+  hasButtons?: boolean;
+  /**
+   * Show gradient edge-fade mask when content overflows, signalling that
+   * more items exist off-screen. Can be suppressed when items have
+   * full-fidelity surfaces that look broken when masked.
+   * @default true
+   */
+  hasEdgeFade?: boolean;
+  /**
+   * Enable scroll-snap on items. Each direct child snaps to the start edge.
+   * @default false
+   */
+  hasSnap?: boolean;
+  /**
+   * Inline padding on the scroll container. Applied as padding-inline
+   * so the gutter is inside the scrollable area — items can scroll fully
+   * into the padded region. Also sets matching scroll-padding so snap
+   * points align to the content edge rather than the viewport edge.
+   *
+   * Accepts numeric spacing steps: 0, 0.5, 1, 1.5, 2, 3, 4, 5, 6, 8, 10.
+   * @default undefined (no padding)
+   */
+  padding?: SpacingStep;
+  /**
+   * Accessible label for the carousel region.
+   * @default 'Carousel'
+   */
+  'aria-label'?: string;
+  'data-testid'?: string;
+}
+
+// =============================================================================
+// Styles
+// =============================================================================
+
+const styles = stylex.create({
+  root: {
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center',
+    minWidth: 0,
+    maxWidth: '100%',
+    overflow: 'clip',
+    overflowClipMargin: '1px',
+  },
+  scroller: {
+    display: 'flex',
+    alignItems: 'center',
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    /* eslint-disable @pharos-ds/no-hardcoded-styles -- 1px bleed for tab indicator; no token at this size */
+    paddingBottom: '1px',
+    marginBottom: '-1px',
+    /* eslint-enable @pharos-ds/no-hardcoded-styles */
+    overscrollBehaviorX: 'contain',
+    scrollBehavior: {
+      default: 'smooth',
+      '@media (prefers-reduced-motion: reduce)': 'auto',
+    },
+    scrollbarWidth: 'none',
+    maskImage: 'none',
+    transitionProperty: 'mask-image',
+    transitionDuration: {
+      default: durationVars['--duration-medium'],
+      '@media (prefers-reduced-motion: reduce)': '0ms',
+    },
+    transitionTimingFunction: easeVars['--ease-standard'],
+  },
+  fadeStart: {
+    maskImage: `linear-gradient(to right, transparent 0%, rgba(0,0,0,0.3) 2px, black ${spacingVars['--spacing-1']})`,
+  },
+  fadeEnd: {
+    maskImage: `linear-gradient(to left, transparent 0%, rgba(0,0,0,0.3) 2px, black ${spacingVars['--spacing-1']})`,
+  },
+  fadeBoth: {
+    maskImage: `linear-gradient(to right, transparent 0%, rgba(0,0,0,0.3) 2px, black ${spacingVars['--spacing-1']}, black calc(100% - ${spacingVars['--spacing-1']}), rgba(0,0,0,0.3) calc(100% - 2px), transparent 100%)`,
+  },
+  snap: {
+    scrollSnapType: 'x mandatory',
+  },
+  item: {
+    scrollSnapAlign: 'start',
+    display: 'flex',
+    flexShrink: 0,
+  },
+  // Overlay on top layer — covers the carousel anchor area
+  buttonOverlay: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    pointerEvents: 'none',
+  },
+  buttonPill: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colorVars['--color-background-popover'],
+    borderRadius: radiusVars['--radius-full'],
+    boxShadow: shadowVars['--shadow-med'],
+    pointerEvents: 'auto',
+    opacity: 1,
+    transitionProperty: 'opacity',
+    transitionDuration: durationVars['--duration-fast'],
+    transitionTimingFunction: easeVars['--ease-standard'],
+  },
+  buttonPillStart: {
+    transform: {
+      default: 'translateX(-50%)',
+      ':is([dir="rtl"] *)': 'translateX(50%)',
+    },
+  },
+  buttonPillEnd: {
+    transform: {
+      default: 'translateX(50%)',
+      ':is([dir="rtl"] *)': 'translateX(-50%)',
+    },
+  },
+  buttonHidden: {
+    opacity: 0,
+    pointerEvents: 'none' as const,
+  },
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion, @typescript-eslint/consistent-type-assertions -- CSS custom property requires type widening for StyleX
+  buttonRadiusOverride: {
+    '--_button-radius': radiusVars['--radius-full'],
+  } as Record<string, string>,
+});
+
+const gapStyles = stylex.create({
+  0: {gap: spacingVars['--spacing-0']},
+  0.5: {gap: spacingVars['--spacing-0-5']},
+  1: {gap: spacingVars['--spacing-1']},
+  1.5: {gap: spacingVars['--spacing-1-5']},
+  2: {gap: spacingVars['--spacing-2']},
+  3: {gap: spacingVars['--spacing-3']},
+  4: {gap: spacingVars['--spacing-4']},
+});
+
+const paddingStyles = stylex.create({
+  0: {
+    paddingInline: spacingVars['--spacing-0'],
+    scrollPaddingInline: spacingVars['--spacing-0'],
+  },
+  0.5: {
+    paddingInline: spacingVars['--spacing-0-5'],
+    scrollPaddingInline: spacingVars['--spacing-0-5'],
+  },
+  1: {
+    paddingInline: spacingVars['--spacing-1'],
+    scrollPaddingInline: spacingVars['--spacing-1'],
+  },
+  1.5: {
+    paddingInline: spacingVars['--spacing-1-5'],
+    scrollPaddingInline: spacingVars['--spacing-1-5'],
+  },
+  2: {
+    paddingInline: spacingVars['--spacing-2'],
+    scrollPaddingInline: spacingVars['--spacing-2'],
+  },
+  3: {
+    paddingInline: spacingVars['--spacing-3'],
+    scrollPaddingInline: spacingVars['--spacing-3'],
+  },
+  4: {
+    paddingInline: spacingVars['--spacing-4'],
+    scrollPaddingInline: spacingVars['--spacing-4'],
+  },
+  5: {
+    paddingInline: spacingVars['--spacing-5'],
+    scrollPaddingInline: spacingVars['--spacing-5'],
+  },
+  6: {
+    paddingInline: spacingVars['--spacing-6'],
+    scrollPaddingInline: spacingVars['--spacing-6'],
+  },
+  8: {
+    paddingInline: spacingVars['--spacing-8'],
+    scrollPaddingInline: spacingVars['--spacing-8'],
+  },
+  10: {
+    paddingInline: spacingVars['--spacing-10'],
+    scrollPaddingInline: spacingVars['--spacing-10'],
+  },
+});
+
+// =============================================================================
+// Component
+// =============================================================================
+
+/**
+ * Horizontal scroll container with fade-edge overflow indication and
+ * optional navigation buttons.
+ *
+ * Wraps any content in a scrollable row. When content overflows, gradient
+ * fades appear at the edges to signal more items exist. When content overflows, prev/next buttons appear at the edges,
+ * rendered on the top layer via Layer so they escape any parent overflow
+ * clipping.
+ *
+ * @example
+ * ```
+ * <Carousel gap={1}>
+ *   <Thumbnail src="/a.jpg" alt="A" />
+ *   <Thumbnail src="/b.jpg" alt="B" />
+ *   <Thumbnail src="/c.jpg" alt="C" />
+ * </Carousel>
+ * ```
+ */
+export function Carousel({
+  ref,
+  children,
+  gap = 1,
+  hasButtons = true,
+  hasEdgeFade = true,
+  hasSnap = false,
+  padding,
+  'aria-label': ariaLabelFromProps,
+  xstyle,
+  className,
+  style,
+  'data-testid': testId,
+  ...htmlProps
+}: CarouselProps) {
+  const t = useTranslator();
+  const ariaLabel = ariaLabelFromProps ?? t('@pharos.carousel.label');
+  const scrollElRef = useRef<HTMLElement | null>(null);
+  const {scrollRef, overflowStart, overflowEnd} = useScrollOverflow();
+
+  // Children.toArray drops null/undefined/boolean children and assigns
+  // stable keys, so slide numbering ("Slide N of M") matches what actually
+  // renders even when some children are conditionally omitted.
+  const slides = Children.toArray(children);
+
+  const layer = useLayer({
+    mode: 'context',
+    lightDismiss: false,
+  });
+
+  useEffect(() => {
+    if (hasButtons) {
+      layer.show();
+    } else {
+      layer.hide();
+    }
+  }, [hasButtons, layer]);
+
+  const composedRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      scrollElRef.current = el;
+      scrollRef(el);
+    },
+    [scrollRef],
+  );
+
+  // Map Shift + vertical wheel to horizontal scroll. Trackpads emit
+  // horizontal deltas natively, but a standard mouse only produces deltaY —
+  // so mouse users can't wheel-scroll a horizontal container. Shift + wheel
+  // is the long-established convention for horizontal scroll containers; we
+  // honor it by translating the vertical delta into a horizontal scroll.
+  //
+  // Only kicks in when Shift is held and the wheel is purely vertical
+  // (deltaX === 0), so native trackpad horizontal scrolling is untouched.
+  const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    if (!event.shiftKey || event.deltaY === 0 || event.deltaX !== 0) {
+      return;
+    }
+    const el = scrollElRef.current;
+    if (!el) {
+      return;
+    }
+    // Nothing to scroll horizontally — let the event fall through so the page
+    // can scroll as it normally would.
+    if (el.scrollWidth <= el.clientWidth) {
+      return;
+    }
+    event.preventDefault();
+    el.scrollBy({left: event.deltaY, behavior: 'auto'});
+  }, []);
+
+  const scrollBy = useCallback((direction: -1 | 1) => {
+    const el = scrollElRef.current;
+    if (!el) {
+      return;
+    }
+    const firstChild = el.firstElementChild as HTMLElement | null;
+    const itemWidth = firstChild ? firstChild.offsetWidth : 0;
+    const amount = el.clientWidth - itemWidth * 0.5;
+    // Respect the user's reduced-motion preference — mirrors the CSS
+    // scroll-behavior override so button-driven scrolling doesn't animate
+    // for users who opted out of motion.
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollBy({
+      // `direction` is the logical intent (-1 = toward content start, +1 =
+      // toward content end). Under RTL the scroll axis is inverted (start is
+      // scrollLeft 0, the end is negative), so flip the physical delta sign.
+      left:
+        (isRtlElement(el) ? -1 : 1) * direction * Math.max(amount, itemWidth),
+      behavior: prefersReducedMotion ? 'auto' : 'smooth',
+    });
+  }, []);
+
+  const fadeStyle = hasEdgeFade
+    ? overflowStart && overflowEnd
+      ? styles.fadeBoth
+      : overflowStart
+        ? styles.fadeStart
+        : overflowEnd
+          ? styles.fadeEnd
+          : null
+    : null;
+
+  // Self-authored position styles (positioning: 'custom' below): a cover
+  // centered on the anchor, sized to it — direction-neutral by construction.
+  const coverStyle: React.CSSProperties = {
+    positionArea: 'center',
+    width: 'anchor-size(width)',
+    height: 'anchor-size(height)',
+  };
+
+  return (
+    <div
+      ref={mergeRefs(ref, layer.ref as React.Ref<HTMLDivElement>)}
+      data-testid={testId}
+      {...htmlProps}
+      {...mergeProps(
+        themeProps('carousel'),
+        stylex.props(styles.root, xstyle),
+        className,
+        style,
+      )}
+      role="region"
+      aria-label={ariaLabel}
+      aria-roledescription="carousel">
+      <div
+        ref={composedRef}
+        tabIndex={0}
+        onWheel={handleWheel}
+        {...stylex.props(
+          styles.scroller,
+          gapStyles[gap],
+          padding != null && paddingStyles[padding],
+          hasSnap && styles.snap,
+          fadeStyle,
+        )}>
+        {slides.map((child, index) => (
+          // APG carousel pattern: each slide container is a group with
+          // aria-roledescription="slide" and an "N of M" accessible name so
+          // ATs announce slide boundaries and position instead of anonymous
+          // generics.
+          <div
+            // eslint-disable-next-line @eslint-react/no-array-index-key -- index fallback only applies to text/number children, which are positional by definition; elements keep their Children.toArray keys
+            key={isValidElement(child) ? child.key : index}
+            role="group"
+            aria-roledescription="slide"
+            aria-label={t('@pharos.carousel.slideLabel', {
+              current: index + 1,
+              total: slides.length,
+            })}
+            {...stylex.props(styles.item)}>
+            {child}
+          </div>
+        ))}
+      </div>
+
+      {hasButtons &&
+        layer.render(
+          <>
+            <div
+              {...stylex.props(
+                styles.buttonPill,
+                styles.buttonPillStart,
+                !overflowStart && styles.buttonHidden,
+              )}>
+              <Button
+                icon={
+                  <span {...stylex.props(rtlStyles.mirror)}>
+                    <Icon icon="chevronLeft" size="xsm" />
+                  </span>
+                }
+                label={t('@pharos.carousel.scrollLeft')}
+                variant="ghost"
+                size="sm"
+                isIconOnly
+                // Disabled when there's nothing to scroll toward. Keeps the
+                // button mounted (stable layout/focus) but removes it from the
+                // tab order and a11y tree while it's visually hidden, so
+                // keyboard users don't land on an invisible control.
+                isDisabled={!overflowStart}
+                onClick={() => scrollBy(-1)}
+                xstyle={styles.buttonRadiusOverride}
+              />
+            </div>
+            <div
+              {...stylex.props(
+                styles.buttonPill,
+                styles.buttonPillEnd,
+                !overflowEnd && styles.buttonHidden,
+              )}>
+              <Button
+                icon={
+                  <span {...stylex.props(rtlStyles.mirror)}>
+                    <Icon icon="chevronRight" size="xsm" />
+                  </span>
+                }
+                label={t('@pharos.carousel.scrollRight')}
+                variant="ghost"
+                size="sm"
+                isIconOnly
+                // See "Scroll left" — disabled while visually hidden so the
+                // button stays mounted but out of the tab order / a11y tree.
+                isDisabled={!overflowEnd}
+                onClick={() => scrollBy(1)}
+                xstyle={styles.buttonRadiusOverride}
+              />
+            </div>
+          </>,
+          {
+            positioning: 'custom',
+            style: coverStyle,
+            xstyle: styles.buttonOverlay,
+          },
+        )}
+    </div>
+  );
+}
+
+Carousel.displayName = 'Carousel';

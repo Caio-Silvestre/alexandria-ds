@@ -1,0 +1,17 @@
+/* Copyright (c) Meta Platforms, Inc. and affiliates. */
+
+/*
+ * Layer order for Pharos + Tailwind coexistence in Vite.
+ *
+ * Desired priority (lowest → highest):
+ *   reset → theme → base → pharos-base → pharos-theme → components → utilities
+ */
+@layer reset, theme, base, pharos-base, pharos-theme, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "@pharos-ds/core/reset.css";
+@import "@pharos-ds/core/pharos.css";
+@import "@pharos-ds/theme-neutral/theme.css";
+@import "@pharos-ds/core/tailwind-theme.css";
+@import "tailwindcss/utilities.css" layer(utilities);

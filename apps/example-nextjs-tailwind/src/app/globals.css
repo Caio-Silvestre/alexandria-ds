@@ -1,0 +1,28 @@
+/* Copyright (c) Meta Platforms, Inc. and affiliates. */
+
+/*
+ * Layer order for Pharos + Tailwind coexistence.
+ *
+ * Pre-declare ALL layers upfront so CSS resolves them in the right order.
+ * Without this, Pharos layers (reset, pharos-base, pharos-theme) are created after
+ * Tailwind's declared layers and end up with higher priority — which means
+ * Pharos component styles beat Tailwind utilities. That's backwards.
+ *
+ * Desired priority (lowest → highest):
+ *   reset → theme → base → pharos-base → pharos-theme → components → utilities
+ *
+ * - Pharos reset is lowest (it uses :where() for zero specificity anyway)
+ * - Tailwind preflight (base) sits just above the reset
+ * - Pharos component styles (pharos-base, pharos-theme) sit in the middle
+ * - Tailwind utilities win over everything — className="bg-red-500" works
+ * - Unlayered consumer CSS always wins over all layers
+ */
+@layer reset, theme, base, pharos-base, pharos-theme, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "@pharos-ds/core/reset.css";
+@import "@pharos-ds/core/pharos.css";
+@import "@pharos-ds/theme-neutral/theme.css";
+@import "@pharos-ds/core/tailwind-theme.css";
+@import "tailwindcss/utilities.css" layer(utilities);

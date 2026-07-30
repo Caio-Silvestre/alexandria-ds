@@ -1,0 +1,714 @@
+# @xds/cli
+
+# 0.1.9
+
+#### New Features
+
+- CLI: full API coverage for the `build`, `swizzle`, `layout`, and `validate` commands — each is now scriptable through the `./api` barrel with the CLI as a thin parse → API call → render wrapper. `build` gains `--json` output. Behavior is unchanged for existing command usage. (#4302)
+
+#### Fixes
+
+- Align two `--json` contract shapes with what the CLI actually emits
+- Register all emitted response types in the `--json` envelope union
+  Three response types were defined, exported, and emitted by commands but never added to `CLIAnyResponse` — the union that `jsonOut()` type-checks payloads against: `component.full`, `component.detail.blocks`, and `upgrade.status`. Because their discriminators were missing from the map, `jsonOut('upgrade.status', …)` (and the two component variants) were rejected by the type-checker, and their payload shapes weren't actually being validated. `build.help` had no response type at all. Added a `BuildHelpResponse` type and wired all four into the union so every `--json` envelope the CLI can emit is now type-checked against a declared shape.
+- Type `detectPackageManager` honestly so `pharos doctor`'s "no lockfile" branch is reachable
+  `detectPackageManager` returns `'npx'` as the sentinel for "nothing detected", but its return type only listed `'yarn' | 'pnpm' | 'bun' | 'npm'`. Type-checkers therefore treated `doctor`'s `pm !== 'npx'` guard as a dead comparison — the "No lockfile detected — defaulting to npm/npx" message looked unreachable and was at risk of being "cleaned up". The return type is now `PackageManager | 'npx'` and detection narrows via a shared type predicate, so the guard is honest and the branch is preserved.
+- Make the CLI's `.mjs` sources fully strict-typecheckable (checkJs + JSDoc)
+  Annotated the entire CLI package so `tsconfig.strict.json` (full `strict` `checkJs` over `src`, `bin`, `scripts`, `docs`, and the emitted `templates`) reports zero errors — down from 1717. Fixes are JSDoc-only: no runtime logic changed, `.mjs` stays `.mjs`. Strict checking also surfaced and corrected several type-contract drifts: the `upgrade.run` response type (declared a `depsUpdated` field the command never emits, and omitted the real `integrations`/`filesChanged`/`transformsApplied`/`errors`), registered the emitted `theme.list`/`theme.add`/`layout.*` response types in the `--json` envelope union, and added `category?` to `ReferenceSection` in core's docs types (reference docs already emit it).
+- Drop the dead `cwd` parameter from `getLatestVersion`
+  `checkForUpdate` called `getLatestVersion(cwd)` and the JSDoc advertised a `cwd` parameter, but the function takes no arguments — it only reads the `$PHAROS_LATEST_VERSION` env var, so the passed `cwd` was silently ignored. Removed the phantom parameter and its doc so the signature matches the behavior. No functional change to the update-nudge output.
+
+#### Other Changes
+
+- `swizzle.copy` payloads always include `package` and `usesStyleX` (both covered by tests), but `SwizzleCopyResponse.data` didn't declare them — the call site cast the payload to `Record<string, unknown>` to sidestep the mismatch. Added both fields to the type and dropped the loose cast so the payload is type-checked.
+- The error `suggestions` shape was declared as `{name, reason}` (reason required) in the JSON envelope / API error contract, but some call sites emit bare `{name}` (e.g. candidate component names on swizzle). Introduced a single canonical `Suggestion` type (`reason?` optional) and referenced it everywhere so the contract matches the emitted data.
+
+#### Contributors
+
+Thanks to everyone who contributed to this release:
+
+- @josephfarina
+
+---
+
+# 0.1.8
+
+#### Breaking Changes
+
+- Avatar and AvatarGroup adopt Icon's abbreviated size scale — `size` now takes `xsm`/`sm`/`md`/`lg`/`xl` instead of `tiny`/`xsmall`/`small`/`medium`/`large`. Pixel values are unchanged (20/24/36/48/128px) and the default is now `md` (still 36px, formerly `small`). Avatar's tiers stay larger than Icon's because avatars align with media rather than glyphs. Run `pharos upgrade` to migrate call sites. (#2672)
+
+#### New Features
+
+- `pharos init --features agents` now defaults to creating root `AGENTS.md` — the tool-agnostic standard that Codex/Copilot, Cursor, and most agents read — instead of the Claude-specific `.claude/CLAUDE.md`. Claude output is now opt-in via `--agent claude` (→ `.claude/CLAUDE.md`), and `--agent all` still writes both. Projects with existing agent-doc files are unaffected: init still discovers and updates every file already present, so this only changes the from-scratch default. (#4216)
+- "Foolproof init": both `@pharos-ds/core` and `@pharos-ds/cli` now print a postinstall nudge pointing you to `npx @pharos-ds/cli init`, `pharos` commands nudge you to finish setup until init has run, and `pharos init` runs non-interactively (no TTY required) so it works in CI and agent environments. (#4147, #4153, #4154, #4155)
+
+#### Fixes
+
+- Stop suggesting bare `npx pharos` before the CLI is installed — it resolves to an unrelated package on the npm registry.
+  The CLI now emits an install-aware invocation everywhere it prints a command:
+- Extend the v0.1.0 upgrade codemods to cover test files that mock `@xds/core` modules, which were previously left half-migrated and broke after upgrade:
+- `pharos upgrade` now keeps the managed agent-docs block (`<!-- PHAROS:START --> … <!-- PHAROS:END -->`) in sync with the installed version on **every** path — including the up-to-date and no-codemods short-circuits that previously returned before any refresh, leaving AI agents reading a stale component index and superseded rules. The block documents the installed library, so it's now refreshed up front (independent of codemods) and reported in the `--json` receipt as `agentDocs`. One detection pass covers three cases: a stale block is rewritten (`--apply`) or reported as a pending change (dry-run, which no longer writes); a project with core installed but no managed block is nudged to run `pharos init --features agents`; an already-current block stays silent. (#4168, #4169)
+
+#### Documentation
+
+- Add a `cli-integrations` CLI docs topic (`pharos docs cli-integrations`) so the integration-authoring guide (originally written by @ejhammond) is discoverable through the CLI and docsite instead of an unreferenced markdown file. Rewrite the CLI README's Configuration section to match the current strict config schema (`integrations`, `issuesUrl`, `hooks.postCodemod`, `experimental.xle`) and reframe the Integrations section around the two-file API.
+
+#### Other Changes
+
+- Installed / global / dev runs suggest `<pm> pharos <cmd>` (e.g. `pnpm exec pharos …`), unchanged.
+- One-off runs (launched via `npx`/`pnpm dlx`/`yarn dlx`/`bunx`) suggest the scoped package `<dlx> @pharos-ds/cli <cmd>`, which always resolves to us.
+- **migrate-xds-module-specifiers**: rewrite the mocked-module path in `vi.mock`/`vi.doMock`/`jest.mock`/`jest.doMock` (and bare `mock`) calls, plus `import(...)` specifiers used in TS type positions (`typeof import('@xds/core/Text')`), so the mock still intercepts the renamed `@pharos-ds/*` import.
+- **drop-xds-prefix-imports**: un-prefix partial-mock override keys inside an `@xds/core` mock factory (e.g. `useXDSTruncation` → `useTruncation`) so the override matches the renamed export instead of silently overriding nothing. Scoped to recognized `@xds/core` mock factories only; unrelated object keys are untouched.
+
+#### Contributors
+
+Thanks to everyone who contributed to this release:
+
+- @cixzhang
+- @ejhammond
+- @joeyfarina
+- @josephfarina
+
+---
+
+# 0.1.7
+
+#### New Features
+
+- Export the authoring factories from `@pharos-ds/core`: `createConfig` at `@pharos-ds/core/config` and `createIntegration`/`createPageTemplate`/`createBlockTemplate`/`createComponentDoc`/`createFunctionDoc`/`createDoc` at `@pharos-ds/core/authoring`. Authoring a config or integration no longer requires depending on the CLI. Existing `@pharos-ds/cli/*` imports keep working via re-export.
+- Add the finalized doc-authoring API to `@pharos-ds/cli/doc`: `createComponentDoc`, `createFunctionDoc` (any function, including hooks), and `createDoc` (generic reference/topic docs). Each factory stamps a `type` discriminant and is validated at the load boundary against a matching per-kind schema. The legacy loose `export const docs = {...}` format keeps loading unchanged, and `.ts`-authored hook/function sources now derive their import path to a tree-shakeable subpath instead of the bare package root.
+- New codemod for the Table `tableProps` deprecation: lifts object-literal `tableProps` keys into direct props on `<Table>`, keeps colliding or dynamic values in place with a TODO note. **Codemod:** `npx pharos upgrade --codemod migrate-table-tableprops-to-direct-props` (#3679)
+- New docs topic `internationalization` covering how to localize pharos components, provide translation catalogs, override default strings, coexist with existing i18n libraries (react-intl, i18next, next-intl), swap languages at runtime, and validate coverage with the shipped pseudo locale. Run `npx pharos docs internationalization` or read it at https://pharos-ds.vercel.app/docs/internationalization.
+- template: accept `.template.{ts,mjs,js}` as the canonical suffix for template-spec files, alongside the legacy `.doc.*` suffix. Template specs export `createBlockTemplate`/`createPageTemplate` — a scaffoldable template, not documentation — so they now get a descriptive name. Core, external-package, and integration discovery (`findShowcase`, `--blocks`, `pharos template <id>` scaffolding) all treat `Foo.template.ts` identically to a legacy `Foo.doc.mjs`; same-stem `.tsx` source resolves for either suffix, and `.template.ts` authoring is loaded via jiti. Additive only — no existing files are renamed.
+
+#### Fixes
+
+- Translated component docs no longer drop props
+  A `docsZh` / `docsDense` block that carried its own `props` array replaced the English component doc **wholesale** rather than overlaying it, so any prop the translation had not caught up with simply ceased to exist. `pharos component Button --zh` silently omitted `isInterruptible` and `isIconOnly`; ten components were affected, including `MobileNav`, `Popover` and `Stack` through the multi-component `components[]` shape.
+- Anchor --dense / --zh doc overlays to their base sections (#2182)
+  The compressed and translated reference docs were merged into the base doc **by array position**, so an overlay whose sections were ordered differently — or which omitted one — grafted every title onto the wrong body.
+- template: inline full demo-image URLs in the Avatar blocks and theme-showcase page so scaffolding strips them to a clean placeholder. Templates that stored only the CDN base in a `const` and appended the filename via interpolation (`` `${CDN}/File.png` ``) previously scaffolded a malformed `src` — the placeholder data URI with the filename glued onto the end — plus a dead `const CDN = 'data:…'`. (#4027)
+
+#### Documentation
+
+- Document the minimal `package.json#exports` recipe an integration needs so its block templates are importable by a bundler-resolution consumer and type-check under `moduleResolution: bundler`: `"./templates/*.tsx": "./templates/*.tsx"` plus an extensionful `import('@acme/widgets/templates/…/…Showcase.tsx')`. Adds `packages/cli/docs/integration-authoring.md` and a fixture test proving the recipe against the repo's own `tsc` and `esbuild`.
+
+#### Contributors
+
+Thanks to everyone who contributed to this release:
+
+- @AKnassa
+- @ejhammond
+- @imdreamrunner
+- @nynexman4464
+
+---
+
+# 0.1.6
+
+---
+
+# 0.1.5
+
+#### New Features
+
+- Add a v0.1.5 upgrade codemod that renames `labelSpacing="default"` to `labelSpacing="hug"` on Switch. (#2889)
+- New `incident-console` page template: an on-call incident response console demonstrating the frame-first tracker archetype — grouped dense incident rows (StatusDot severity, Token state), PowerSearch filtering, status segmented control, and a resizable inspector panel with metadata and timeline. Adds the `Tools - Incident Console` template category.
+- New `messaging-shell` page template: Slack-style column frame (rail | sidebar | stream | thread panel) built on the Chat component family — dense rows, zero cards. Adds the `Shell - Messaging` template category.
+
+#### Fixes
+
+- Fill viewport height across CLI page templates so the background covers the full page (#3762)
+- `pharos init --features agents` now supports `--agent hermes`. The preset injects the component index into an existing `.hermes.md`/`HERMES.md` (Hermes Agent's top-priority project-context files) and otherwise creates root `AGENTS.md`, which Hermes loads from the project root — unlike the `.claude/CLAUDE.md` default. Additive only: existing `claude`/`cursor`/`codex`/`all`/auto-detect behavior is unchanged. (#2187)
+- cli: `pharos doctor` now detects `@pharos-ds/theme-*` packages in pnpm projects. pnpm installs packages as symlinks into `node_modules/.pnpm`, and the theme scan only accepted real directories, so every symlinked theme package was skipped and doctor warned that none were installed (#3530).
+- Make `pharos theme build`'s color-scheme declaration mode-aware, so built themes with `light-dark()` tokens no longer defeat `<Theme mode="light|dark">` forcing (#3660)
+- `runCodemods` now returns `writtenFiles`, so `pharos upgrade`'s post-codemod hooks (prettier/eslint formatting) actually run on core-codemod changes.
+  The runner built the `writtenFiles` list internally but omitted it from its return object, so `upgrade.mjs` read `codemodResult.writtenFiles ?? []` as always-empty and the configured `hooks.postCodemod` (e.g. `prettier --write`, `eslint --fix`) received no files and silently skipped. As a result, jscodeshift's default double-quote output (`"@pharos-ds/core/Button"`) was never reformatted to the project's style, failing `prettier-format` lint on migrated apps. The sibling `integration-runner` already returned `writtenFiles` correctly, so integration-codemod changes were formatted while core-codemod changes were not.
+- `pharos swizzle`: swizzled components ship raw StyleX source that needs a build-time StyleX compiler, and without one they render unstyled with no error. The command now prints a StyleX build-setup note after copying (including the Next.js caveat that the StyleX Babel plugin disables SWC and breaks `next/font`, so an SWC-based transform is required), and `pharos docs styling` gains a "StyleX Build Setup" section covering per-bundler setup. (#3373)
+- `pharos theme build`: custom component variants declared in a theme (e.g. `button['variant:accentOutline']`) now generate a type augmentation against the component's real interface (`ButtonVariantMap`) instead of a non-existent `XDS`-prefixed one, so `variant="accentOutline"` type-checks. Props with no augmentation point (closed unions like Button `size` or Heading `type`) are skipped instead of emitting dead augmentations, and the generated `.variants.d.ts` is now referenced from the theme's `.d.ts` so the augmentation actually loads. (#3371)
+
+#### Documentation
+
+- CodeBlock: terminal-style dark block template (syntaxTheme preset)
+- Add cascade-layer safety guidance to the migration guide (`pharos docs migration`): a Cascade Layer Safety audit checklist (unlayered styles and later layers both beat `pharos-base` regardless of specificity, classify every stylesheet into a layer deliberately, layer Tailwind preflight on both v3 and v4) and a Foundation Smoke Test section (one page with Button/TextInput/Card/Table plus a non-zero-padding assertion) so a broken layer order fails before feature work instead of after N migrated screens. The getting-started guide now points to it from the theme CSS step.
+- NavHeadingMenu: add a playground config and showcase block so the Overview tab has a working preview (#2698)
+- NavHeadingMenu: constrain the showcase SideNav to a shorter height so the heading no longer appears to float at the top of the Overview preview (#2698)
+
+#### Contributors
+
+Thanks to everyone who contributed to this release:
+
+- @arman-luthra
+- @cixzhang
+- @ejhammond
+- @harjothkhara
+- @is-jain
+- @jiunshinn
+- @josephfarina
+- @let-sunny
+- @thedjpetersen
+- @zeroryu
+
+---
+
+# 0.1.4
+
+#### Fixes
+
+- `pharos component <Name>` now prints the correct `defineTheme` component-override key. The theming example stripped a stale `xds-` prefix (left over from the pharos rename) instead of `pharos-`, so it advertised keys like `pharos-base-table` / `pharos-button`. Those double-prefix to `.pharos-pharos-*` selectors at runtime and silently match nothing. Keys are now the stable class name minus `pharos-` (e.g. `base-table`, `button`), which is what `generateThemeRules` expects (#3458).
+- Harden the v0.1.0 upgrade codemods against three cases surfaced while migrating consumer apps:
+
+#### Documentation
+
+- Add a browser-support guide (`pharos docs browser-support`) documenting the support tiers, the modern platform features Pharos depends on (Popover API, CSS anchor positioning, `light-dark()`), which components are affected, and how consumers can support older browsers for their own audience.
+
+#### Other Changes
+
+- **drop-xds-prefix-imports**: when un-prefixing an `@xds/core` import (e.g. `XDSCodeBlock` → `CodeBlock`) would collide with a same-named local binding in the file (such as a local `export function CodeBlock` wrapper), alias the import to `Pharos<Name>` and rewrite its usages instead of producing a duplicate declaration that breaks the build.
+- **migrate-xds-css-surfaces**: rewrite CSS `@import` of `@xds/*` package stylesheets (both `'…'`/`"…"` and `url(…)` forms), including the `@xds/core/xds.css` → `@pharos-ds/core/pharos.css` file rename and the `theme-default`/`theme-daily` → `theme-neutral` collapse.
+- **migrate-xds-module-specifiers**: when collapsing `@xds/theme-default`/`@xds/theme-daily` to `@pharos-ds/theme-neutral`, remap the `defaultTheme` export to `neutralTheme`, aliasing back to the original local name (`neutralTheme as defaultTheme`) so downstream usages keep working.
+
+#### Contributors
+
+Thanks to everyone who contributed to this release:
+
+- @cixzhang
+- @ejhammond
+- @ryanda9910
+
+---
+
+# 0.1.3
+
+#### New Features
+
+- Add a hidden `pharos blog` command that reads the blog over the site's RSS feed and prints a post's plaintext (`.txt`) variant. The command is not shown in `--help` or the manifest and always reads from the canonical site origin.
+- Component discovery is now package-ownership aware: --package scoping, source resolution for integration components, and package-qualified JSON listings.
+- Strict config + integration v1 schema (integrations, issuesUrl, hooks.postCodemod) and new @pharos-ds/cli/integration export.
+- File-based codemod API (createCodemod/createConfigCodemod) with the @pharos-ds/cli/codemod export and integration codemod discovery in upgrade.
+- component, template, and upgrade now print a one-line non-blocking warning when a configured integration has validation issues, pointing to validate-integration.
+- Add a Kanban Board page template: color-coded status columns, draggable task cards with priority tags, and board toolbar. Based on a design by @cg-hub18.
+- Add frame-first layout guidance: new `pharos docs layout` topic (shell choice, region budgets, app archetypes, cards-vs-rows policy, responsive contracts), layout rules in the generated agent cheat sheet, and layout anti-patterns in `docs principles`.
+- Add a v0.1.3 config codemod that migrates pharos.config layout.components to experimental.xle.components.
+- Add v0.1.0 codemods for migrating `declare module "@xds/core/..."` type augmentations and `.xds-*` / `[data-xds-theme]` / `@layer xds-theme` CSS surfaces to their `@pharos-ds`/`pharos-*` equivalents.
+- Introduce the Project configuration API as the single entry point for reading resolved project config, components, templates, codemods, and issue routing, replacing loadConfig. Misconfigured integrations are now skipped with a warning during upgrade instead of hard-failing, and a new --skip-codemod flag lets you re-run past a failed codemod.
+- Add a Shell page-template category to the CLI: Top Nav, Side Nav, and Shell Nav app-shell scaffolds (#3245, #3246, #3247)
+- Static template authoring API (createPageTemplate/createBlockTemplate) with the @pharos-ds/cli/template export and type-driven, package-scoped template discovery.
+- Swizzle can now copy integration-owned components, rewrites escaping imports to the owning package, and routes maintainer feedback through config and integration issue URLs.
+- `pharos theme build --watch`: rebuild a theme automatically whenever the source file changes, until interrupted with Ctrl-C. Removes the manual re-run step (and the stale-CSS confusion that comes with forgetting it) from the theme-authoring loop. Each rebuild runs in a child process so a build error is contained and the watcher keeps running. Not supported with `--json`. (#3375)
+- Add the validate-integration command and integration issue model for checking an Pharos integration package's manifest and contributions.
+- XLE app-component registration moved into validated config under experimental.xle.components (object form), replacing the unvalidated layout.components read.
+
+#### Fixes
+
+- Align the CLI error-code type declarations with the runtime error codes (add the missing ERR_AMBIGUOUS_TEMPLATE declaration).
+- Correct the `doctor` theme-wiring hint to reference the real `pharos.theme` config field (was `xds.theme`) and update the agent-docs check wording to say "Pharos".
+- Update the API/CLI parity harness for the package-qualified `component --list` shape, and make the component API reject a non-string name with a clean error instead of throwing.
+- The XDS-prefix drop codemod now runs as a mandatory v0.1.0 upgrade step, so upgrading from 0.0.x rewrites prefixed imports (useXDSTheme, XDSButton, XDSIconRegistry, ...) to their bare names alongside the @xds/_ → @pharos-ds/_ scope rename.
+- upgrade now runs core codemods before loading config, so a config codemod can repair an otherwise-invalid config; dry-run reports a fixable config and suggests the command to apply it.
+
+#### Documentation
+
+- Blockquote: add "With Attribution" and "Testimonials" examples (#3385)
+- DateTimeInput and DateRangeInput: add example blocks so their docs pages have populated Examples sections and playground links (#2724)
+- Add copyable example blocks to 46 component docs pages that previously showed only a hero visual and an empty Examples section (#3481)
+- HoverCard: give the "Link Preview" example an interactive `Link` trigger so there is something to hover over (#2728)
+- Lightbox: add Gallery, Video, and Zoom examples and fix the playground preview (#3301)
+- Remove lingering references to the removed gap-report feature and swizzle gap flags; docs now reflect swizzle's maintainer feedback link.
+- Tab: add an interactive example showing `icon` and `selectedIcon` on the Tab docs page (#2765)
+- ToggleButtonGroup: add a vertical example block showing orientation="vertical" with single- and multi-select groups (#2707)
+
+#### Other Changes
+
+- Integration codemod and template-doc loading now use the shared module-loader util instead of duplicating the jiti/import logic.
+- Extract the shared module-loading + conventional-file-discovery helpers used by config and integration loading into one internal util (no behavior change).
+- Remove the standalone gap-report command. Swizzle now prints a short maintainer feedback link instead of filing issues.
+- Load and validate user-authored config, integration, codemod, and template modules through one shared module loader; create\* factories are now type-only and validation happens at load.
+- Remove the obsolete xds config-surface migration codemod and unify config codemod execution on the shared (file, api) runner used by integration codemods.
+
+#### Contributors
+
+Thanks to everyone who contributed to this release:
+
+- @AKnassa
+- @cg-hub18
+- @ejhammond
+- @ernestt
+- @harshavardhan194
+- @josephfarina
+- @kentonquatman
+- @mohitWeb-lab
+- @pollychen-lab
+- @thedjpetersen
+
+---
+
+# 0.1.2
+
+#### Breaking Changes
+
+- `Text`, `Heading`, `Link`, and `Timestamp` rename the `color="active"` value to `color="accent"`, now mapping to the dedicated `--color-text-accent` token (legible accent text ink) instead of `--color-accent`. Run `pharos upgrade` to migrate call sites automatically. (#2863)
+
+#### New Features
+
+- Let `pharos.config.mjs` integrations contribute package docs, gap-report hooks, template fetching hooks, upgrade codemods, and post-codemod hooks.
+- Add `pharos theme add <slug> [path]` (and `pharos theme list`) to scaffold a theme's source into your project as editable files you own, with theme sources bundled into the CLI
+
+#### Fixes
+
+- align `pharos init` theme instructions with the runtime built-theme recommendation (#3080)
+  `pharos init` now points users at the pre-built theme path (`@pharos-ds/theme-neutral/built` + `theme.css`) and the base CSS imports, matching the runtime `<Theme>` console guidance, instead of the slower runtime style-injection import that left apps unstyled.
+- `pharos theme build` now derives every output file (.css/.js/.d.ts) from the theme name so they share one naming scheme, shows import paths as bare `./<name>` specifiers (instead of a cwd-rooted `./src/...` path that was wrong when your file already lives under src/), and no longer warns about the `variant` prop on `card`
+
+#### Documentation
+
+- Rename the ClickableCard and SelectableCard examples to follow the "Component — Variant" title convention (`Clickable Card — Nested Button`, `Selectable Card — Multi-select`), and add playground defaults to both card docs so their docsite previews show realistic card content (#2877)
+- Declare playground scaffolds for the Chat sub-components so they preview at a realistic width (ChatComposer and ChatComposerDrawer wrap in a sized container, and the drawer seeds default content), and drop the redundant visible value label from the ChatComposerDrawer "With Progress" example while keeping the accessible label (#2877)
+- Rename the DateInput "Date Range" example to "Min/Max Constraints" — it demos a single input constrained to a min/max window, not a date-range picker (#2692)
+- Wire local state into more showcase examples that were frozen (static value + no-op onChange): TextInput, TextArea, NumberInput, SegmentedControl, RadioList, Tab, TabList, and TabMenu. Follows the same fix as the Slider/Selector/MultiSelector showcases so the docsite previews are actually interactive
+- Wire local state into the Typeahead, Tokenizer, and FileInput showcase examples (static value + no-op onChange → frozen previews). Completes the interactive-showcase fixes started for Slider/Selector/MultiSelector (#3187-#3189) and the input/tab batch
+- Wire local state into the Slider, Selector, and MultiSelector showcase examples so they are interactive — they were controlled components with a static value and a no-op/missing onChange, so the docsite previews appeared frozen (#3187, #3188, #3189)
+- Add a LinkProvider example block showing how to swap in a framework router link (e.g. Next.js Link) for client-side routing (#2733)
+- Add a showcase block for Outline so its docs page has a hero preview, alongside the existing example blocks (#2871)
+- Remove the "MoreMenu — In Toolbar" example block — it rendered incorrectly and was redundant with the other MoreMenu examples (#2870)
+- Add rendered example blocks for the two column-axis Table plugin hooks,
+  shown on their own subcomponent pages:
+- Move the "ToggleButton — Group" example to the ToggleButtonGroup page, where it belongs (it demonstrates grouped toggle behavior) (#2842)
+- Make the Toolbar "Table Filter" example use real Selector controls for its Status and Priority filters instead of buttons styled to look like dropdowns, and add meaningful playground defaults plus richer slot options (buttons, icon buttons, tabs, segmented controls, selectors) to the Toolbar docs (#2877).
+
+#### Other Changes
+
+- `useTableStickyColumns — Pinned Columns` (on /components/useTableStickyColumns)
+- `useTableColumnResize — Draggable Columns` (on /components/useTableColumnResize)
+
+#### Contributors
+
+Thanks to everyone who contributed to this release:
+
+- @cixzhang
+- @durvesh1992
+- @ejhammond
+- @humbertovirtudes
+- @rubyycheung
+
+---
+
+# 0.1.1
+
+#### New Features
+
+- Add `pharos build` command for page composition, with natural-language search ranking.
+  `build "<idea>"` returns a composition kit — the closest page template, the
+  blocks that cover parts, and components to fill gaps, plus a Compose suggestion.
+  `build` with no args prints the how-to-build playbook. The shared search ranking
+  now handles oblique natural-language queries via tokenization + stopwords, a
+  synonym/intent map, light stemming, and page-template keyword enrichment.
+- Make generated agent docs build-first and restructure `init` output.
+  The generated `CLAUDE.md` now leads with the `build` workflow (search reframed as
+  a neutral universal find), and includes a required-CSS setup note
+  (`reset.css` + `pharos.css`) so components never render unstyled. `init` now
+  points agents at `pharos build`/`pharos search` instead of dumping page-template
+  names.
+- Improve `pharos build` output into a complete composition kit.
+  `build "<idea>"` now returns an agent-ready kit grouped by role: a START line
+  (scaffold vs compose), the closest PAGE template, an always-on FRAME (page
+  shell) and FOUNDATION (layout/typography/action primitives), idea-specific
+  BLOCKS and DOMAIN COMPONENTS (with a relevance floor to cut noise), and a SETUP
+  reminder. The always-on FRAME/FOUNDATION groups fix low recall of the
+  structural primitives every page needs but that never keyword-match an idea
+  (measured: component recall 15% to 71% on an agent-grounded eval).
+- Densify agent docs + tailor styling guidance to the project's configured system
+  Tightened the generated `CLAUDE.md`/`AGENTS.md` block from ~48 lines to ~26
+  (the per-topic `docs` dump collapsed to one line, `build`/`search`/`component`
+  no longer duplicated between workflow and reference, run-prefix stated once,
+  filler prose removed) — same information, far denser.
+
+#### Fixes
+
+- `npx pharos` now works when the CLI is installed as a real npm package.
+  The bin imported its `../src/*` modules relative to the invoked path, so running
+  through the `node_modules/.bin/pharos` symlink made them resolve outside the
+  package (`ERR_MODULE_NOT_FOUND: .../node_modules/src/...`) on Node versions that
+  don't realpath the bin entry. It now resolves siblings via the bin's real path
+  (realpath of `import.meta.url`), working whether invoked via symlink, copy, or
+  Windows shim. Also fixes the non-interactive `init`/`theme` error to say
+  `pharos <command>` instead of the stale `xds <command>`.
+- Add a v0.1.0 upgrade codemod that migrates legacy `@xds/*` module specifiers and config surfaces to the Pharos v0.1.0 names.
+  [breaking] Remove legacy `pharos.versionFile` update-hint support from package.json.
+
+#### Documentation
+
+- Add npm install step to the Theme System guide
+  The Quick Start section jumped straight to `import {neutralTheme} from '@pharos-ds/theme-neutral'`, which fails with `Cannot find module` for anyone who hasn't already installed the theme package. Prepend a one-line preamble + `npm install` code block, and add a short prose note above the Available Themes table pointing at the install command pattern. Reported in #3082.
+
+#### Other Changes
+
+- StyleX compiler wired → `xstyle` / StyleX token imports
+- Tailwind → utility classes backed by `@pharos-ds/core/tailwind-theme.css`
+- neither → `style`/`className` with `var(--token)` design tokens, plus an
+  explicit note NOT to use `xstyle`/utilities (they would not compile)
+
+#### Contributors
+
+Thanks to everyone who contributed to this release:
+
+- @ejhammond
+- @josephfarina
+- @nynexman4464
+
+---
+
+# 0.1.0
+
+#### Breaking Changes
+
+- Read project config from `pharos.config.mjs` (was `xds.config.mjs`)
+  The CLI now resolves its optional project config from `pharos.config.mjs`
+  instead of `xds.config.mjs` — a hard cut, no fallback. Consumers with an
+  `xds.config.mjs` must rename it to `pharos.config.mjs` (the config shape and
+  all fields are unchanged). Part of removing `xds` naming from the public API.
+- Rename the CLI command/bin from `xds` to `pharos`
+  The CLI binary is now `pharos` (was `xds`); `bin/xds.mjs` is renamed to
+  `bin/pharos.mjs`, the dual `xds`+`pharos` bin entries collapse to a single
+  `pharos`, and the program/manifest name is `pharos`. Invoke the CLI as
+  `npx pharos <command>` (e.g. `npx pharos component Button`). The swizzle
+  default output dir moves from `./components/xds` to `./components/pharos`.
+  Consumers using `npx xds`, an `xds` npm-script alias, or the `xds` MCP server
+  name should switch to `pharos`. Part of removing `xds` naming from the public API.
+- Rename the exported `XDSError` class to `PharosError`
+  The CLI's programmatic API error class is renamed `XDSError` -> `PharosError`
+  (exported from `@xds/cli` + declared in its types). Consumers that catch or
+  reference `XDSError` from the CLI's API should switch to `PharosError`. Part of
+  removing `xds` naming from the public API.
+- Remove the XDS-prefix compatibility layer — pharos is now the only public surface
+  This release erases all `xds` naming from the public API; there is no compatibility
+  window. Consumers must migrate (we own all consumers pre-OSS):
+- Remove the daily, brutalist, and default themes; neutral is the new baseline
+  Three theme packages are removed from the repo and will no longer be published:
+
+#### Fixes
+
+- `theme build` generates valid bare type imports (IconRegistry/DefinedTheme)
+  `pharos theme build` emitted `.d.ts` files importing `XDSIconRegistry` /
+  `XDSDefinedTheme` from `@xds/core`, but those aliases were removed — the
+  generated types failed to resolve. Generate `IconRegistry` / `DefinedTheme`
+  (the bare names `@xds/core` now exports) instead.
+
+#### Documentation
+
+- Update CLI theme docs to the current theme set
+  Refreshes the `pharos docs theme`, `getting-started`, `styling`,
+  `styling-libraries`, and `migration` reference docs to reflect the published
+  themes: `neutral`, `butter`, `chocolate`, `gothic`, `matcha`, `stone`, and
+  `y2k`. The removed `theme-default`, `theme-brutalist`, and `theme-daily`
+  packages are dropped from the docs, and install/import examples now use
+  `@pharos-ds/theme-neutral` as the recommended starting theme.
+
+#### Other Changes
+
+- **Component names:** the `XDS*` aliases are gone — use bare names (`Button` not
+  `XDSButton`, `useTheme` not `useXDSTheme`, `ButtonProps` not `XDSButtonProps`). The
+  `drop-xds-prefix-imports` codemod automates this.
+- **CSS classes:** components emit only `.pharos-*` (the dual `.xds-*` class is gone).
+  Update custom CSS selectors `.xds-button` -> `.pharos-button` (prop/state value classes
+  like `.primary`/`.sm` are unchanged).
+- **data attributes:** only `data-pharos-theme` / `data-pharos-media` are written; update
+  custom selectors and SSR root attributes off `data-xds-*`.
+- **CSS layers:** `@layer xds-base` / `xds-theme` are renamed to `pharos-base` /
+  `pharos-theme`; update your `@layer` order line and any PostCSS `layersBefore` config.
+  `@pharos-ds/build`'s default library layer is now `pharos-base`.
+- **Pre-compiled stylesheet:** the `@pharos-ds/core/xds.css` export is removed — import
+  `@pharos-ds/core/pharos.css`.
+- **CSS custom properties:** the `--xds-*` padding fallback is gone; set `--pharos-*`.
+- **CLI config key:** `@pharos-ds/cli` reads the package.json `"pharos"` field (was `"xds"`).
+  Rename the block; a stale `"xds"` key silently drops the package from discovery.
+- `@pharos-ds/theme-daily`
+- `@pharos-ds/theme-brutalist`
+- `@pharos-ds/theme-default`
+- import {defaultTheme} from '@pharos-ds/theme-default/built';
+  - import {neutralTheme} from '@pharos-ds/theme-neutral/built';
+- <Theme theme={defaultTheme}>...</Theme>
+  - <Theme theme={neutralTheme}>...</Theme>
+
+  ```
+
+  ```
+
+- Remove the internal `drop-xds-meta-prefix` codemod from the OSS repo (#2970)
+  This codemod has been moved to its own package's tooling, where it belongs. It was registered as an optional, version-independent transform and is not part of any standard upgrade path, so removing it does not affect the public `0.0.13 → 0.0.15` migration.
+- Rename the npm package scope from `@xds/*` to `@pharos-ds/*`
+  All published packages move to the new `@pharos-ds` scope (e.g. `@xds/core` → `@pharos-ds/core`), along with the workspace lockfile, build/runtime scope-directory scans, and docsite slug derivation. Consumers must update their imports and dependency names. The internal ESLint plugin namespace (`@xds/*` rules) is intentionally untouched and tracked separately. Existing `@xds/*` codemods continue to target the old scope so projects still on `@xds/*` can migrate.
+
+#### Contributors
+
+Thanks to everyone who contributed to this release:
+
+- @cixzhang
+- @ejhammond
+
+---
+
+# 0.0.15
+
+#### Breaking Changes
+
+- **New `pharos upgrade` codemods** — This release ships codemods for the DatePicker→Input rename (`rename-date-picker-to-input`), Stack `element`→`as` (`rename-stack-element-to-as`), Chat `isStreaming`→`isStopShown` (`rename-isStreaming-to-isStopShown`), imperative `ref`→`handleRef` (`rename-imperative-ref-to-handleRef`), the menu/selector `children`→`endContent` move (`migrate-item-children-to-endcontent`), and the selector function-children→`renderOption` move (`migrate-selector-children-to-render-option`). The bare-name migration (`drop-xds-prefix-imports`, `drop-xds-meta-prefix`) and the theme `migrate-theme-selectors-to-data-attrs` codemod ship as optional, run them explicitly. (#2879, #2957)
+
+#### Upgrade
+
+```bash
+npx pharos upgrade --apply
+```
+
+#### New Features
+
+- **`pharos` binary** — The CLI is now also available as `pharos` (same launcher as `xds`), part of the un-prefix migration. Component discovery, the doc gate, and CI checks are prefix-agnostic — both `XDS{Name}.tsx` and bare `{Name}.tsx` source files are recognized. (#2867, #2878)
+- **`pharos doctor`** — New health-check command for diagnosing project/setup issues. (#2565)
+- **Unified search** — `pharos search` searches across components, hooks, docs, and templates in one query. (#2564)
+- **Capability manifest** — Full machine-readable capability manifest for agent discovery, plus stable machine-readable error codes on every error. (#2562, #2563)
+- **`@xds/cli/api` hook export** — The `hook` is exposed via `@xds/cli/api` with types and parity coverage. (#2558)
+- **CLI exit-code policy** — Every user-visible error now exits with code 1 in both human and `--json` modes (previously several command-layer errors printed a message but exited 0, invisible to CI scripts and AI agents). `xds bogus-cmd`, `pharos theme bogus-subcommand`, the bare `theme` group with an unknown subcommand, and "command not found"/"did you mean…" paths all exit 1. Help, version, and bare-list invocations still exit 0. Introduces `lib/cli-error.mjs` as the canonical exit-code helper.
+- **Migration guide** — Added an explicit guide for moving existing Tailwind, shadcn, and Radix applications to XDS incrementally.
+- **Data-attribute selector docs** — Documented the data-attribute selector surface in CLI docs alongside the core dual-emit change.
+
+#### Fixes
+
+- **`--json` on Commander short-circuits** — `--json` now honored on parse errors and `--help`. A new shim wires `exitOverride()` and a JSON-aware `configureOutput` onto every command and patches `outputHelp` to emit a `{apiVersion, type:'help', data}` envelope under `--json`. Parse errors produce `{apiVersion, error}` on stdout with exit 1; unknown subcommands now error instead of silently emitting help with exit 0; `--detail` is choice-validated. Non-`--json` invocations are unchanged.
+- **`--json` contract enforcement** — Commands that don't support `--json` reject the flag in a `preAction` hook _before_ running side effects, so `pharos init --json` no longer creates files and _then_ errors, leaving partial state behind.
+- **`--json` envelope documented** — Success responses are `{ type, data }`; error responses are `{ error, suggestions? }`. The `--json` help text describes both.
+- **`xds --version --json`** — Emits `{ type: 'version', data: { version } }` instead of plain text.
+- **`xds --json` (no subcommand)** — Emits `{ type: 'help', data: { commands, jsonSupported, ... } }` instead of human help text.
+- **`pharos upgrade --json`** — "Already up to date" and "no codemods in version range" paths emit structured `{ type: 'upgrade.status', ... }` envelopes. The codemod runner is silent under `--json` so prompts and progress lines no longer corrupt stdout.
+- **`pharos discover --json`** — Includes `meta: { configured: false }` when no packages are configured, distinguishing "configured but empty" from "not configured".
+- **`xds gap-report --json`** — Returns a structured error instead of starting an interactive prompt when required flags are missing; the "gh CLI missing" path also emits a JSON error.
+- **`pharos theme --json`** — The `theme` parent command (without a subcommand) rejects `--json` cleanly; `theme build --json` continues to work.
+- **Theme CSS prose regression** — `pharos theme build` now uses a single CSS generation path (`@xds/core`'s generator) and treats a failed `@xds/core/theme` import as a hard build error instead of a silent fallback, fixing the docsite Markdown typography regression after the XDS-prefix migration. (#2964)
+
+#### Contributors
+
+Thanks to everyone who contributed to this release:
+
+- @cixzhang
+- @czarandy
+- @ejhammond
+- @ernestt
+- @imdreamrunner
+- @josephfarina
+- @kentonquatman
+- @rubyycheung
+- @thedjpetersen
+
+---
+
+# 0.0.14
+
+#### Codemods
+
+- `rename-action-props` — Rename `on*Action` props to `*Action` (React 19 convention) (#1942)
+- `rename-status-variants` — Rename `positive`/`negative` status to `success`/`error` (#2175)
+- `rename-section-wash-to-muted` — Rename Section `wash` variant to `muted` (#2063)
+
+#### New Features
+
+- **New component showcases** — XDSAvatarGroup, XDSInputGroup, XDSStepper, XDSButtonGroup, XDSContextMenu, XDSFileInput, XDSDateRangePicker, XDSDateTimePicker, XDSBlockquote
+- **Hook documentation system** — `xds hooks` CLI command for hook docs (#1849)
+- **Playground defaults** — Added to 19 more components (#2047)
+- **Theme/MediaTheme/SyntaxTheme showcases** — Utility showcase support (#2040, #2028)
+- **Slot elements** — Wired through playground UI for ReactNode props (#2012, #2005)
+- **`exampleFor` field** — Added to all block templates (#1966)
+- **`scaffold` flag** — Template metadata scaffold support (#1939)
+- **Table page templates** — Heatmap Status, Matcha Store, Chart Shoe Store (#2172, #2149, #2154)
+
+#### Fixes
+
+- **Group useXDSToast and useXDSCollapsible** with their parent components in docs (#2049)
+- **DropdownMenu inline data types** — Inline into items prop docs (#2027)
+- **Parent hook docs** to their component in docsite (#2022)
+
+---
+
+# 0.0.13
+
+#### Codemods
+
+- `toolbar-density-to-size` — Migrate Toolbar `density` prop to `size` (#1448)
+- `icon-name-deprecations` — Rename `checkCircle`/`xCircle` icons to `success`/`error` (#1503)
+- `rename-attachments-to-drawer` — Rename `XDSChatComposerAttachments` → `XDSChatComposerDrawer` (#1714)
+
+#### New Features
+
+- `--skip-install` and `--force-install` flags for `pharos upgrade` (#1547)
+- `npx pharos docs icons` reference + updated icon prop descriptions (#1500)
+- Theme nudge in generated agent docs (#1456)
+- Theme `expandColorScale` — derive color tokens from accent hex in `pharos theme build` (#1452)
+- Component groups read from doc files instead of hardcoded map (#1650)
+- Page and block template system (#1393)
+
+#### Fixes
+
+- Handle prerelease suffixes in `semverCompare` (#1512)
+- Handle ternary/logical expressions in `icon-name-deprecations` codemod (#1513)
+- Don't inject XDS block into files without markers during upgrade (#1495)
+- `findShowcase` matches by directory name and `componentsUsed` (#1728)
+- Include `onMedia` CSS in built theme output (#1450)
+- Register codemods for v0.0.13 (moved from v0.0.14) (#1508)
+
+#### Upgrade
+
+```sh
+npx pharos upgrade --apply --to 0.0.13
+```
+
+---
+
+# 0.0.12
+
+#### Codemods
+
+- `add-is-icon-only` — Add `isIconOnly` to icon-only Button and ToggleButton usages (#1257)
+
+#### Upgrade
+
+```sh
+npx pharos upgrade --apply --to 0.0.12
+```
+
+---
+
+# 0.0.10
+
+#### Codemods
+
+- `remove-size-props` — Remove `size` prop from StatusDot and ProgressBar (#966)
+
+#### Upgrade
+
+```sh
+npx pharos upgrade --apply --to 0.0.10
+```
+
+---
+
+# 0.0.8
+
+#### New Features
+
+- CLI: tsx parser for .ts files
+- Update hints in postAction hook
+
+#### Codemods
+
+- `rename-endslot-to-endcontent` — Button `endSlot` → `endContent` (#895)
+- `migrate-token-renames` — Token name migration to v0.0.8 convention
+
+#### Upgrade
+
+```sh
+npx pharos upgrade --apply --to 0.0.8
+```
+
+---
+
+# 0.0.7
+
+#### Codemods
+
+- `rename-banner-variant-to-container` — Banner `variant` → `container` (#814)
+
+#### Upgrade
+
+```sh
+npx pharos upgrade --apply --to 0.0.7
+```
+
+---
+
+# 0.0.6
+
+#### Codemods
+
+- `migrate-token-names` — Design token renames per naming audit
+- `migrate-shadow-tokens` — Elevation → shadow semantic naming
+- `migrate-collapse-to-collapsible` — XDSCollapse → XDSCollapsible
+- `migrate-radius-tokens` — Semantic radius → numeric scale
+- `migrate-skeleton-radius` — Skeleton radius prop → numeric scale
+- `migrate-badge-children-to-label` — Badge children → label prop
+
+#### Upgrade
+
+```sh
+npx pharos upgrade --apply --to 0.0.6
+```
+
+---
+
+# 0.0.5
+
+#### New Features
+
+- Generate agent cheat sheet from live CLI metadata (#640)
+- `--detail` and `--lang` flags for typed `.doc.mjs` output (#636)
+- Fold `agent-docs` into `init` with `--features` flag (#639)
+
+> **Note:** Codemods for v0.0.5 breaking changes are registered under v0.0.6. Use `--to 0.0.6`.
+
+---
+
+# 0.0.4
+
+#### Features
+
+- **`pharos theme build`** — Renamed from `build-theme` to `theme build` (#570)
+- **`--lang` flag** — TranslationDoc support for i18n/compressed docs (#611)
+- **`--zh` flag** — Chinese Simplified doc output (#567)
+
+#### Refactors
+
+- Split `component.mjs` into `lib/` modules with lazy command registry (#613)
+
+---
+
+# 0.0.3
+
+#### Patch Changes
+
+- Sync package.json exports map
+- Add verify-exports CI check (#537)
+
+---
+
+# 0.0.2
+
+#### New Features
+
+- `pharos upgrade` command with codemod support
+- `pharos theme build` (formerly `build-theme`)
+
+#### Codemods
+
+12 codemods for the v0.0.2 breaking changes:
+
+- `rename-selector-items-to-options` — Selector `items` → `options`
+- `unify-visibility-to-onOpenChange` — Visibility callbacks → `onOpenChange`
+- `unify-uncontrolled-to-defaultX` — Uncontrolled state → defaultX pattern
+- `rename-banner-endButton-to-endContent` — Banner `endButton` → `endContent`
+- `rename-form-tooltip-startIcon` — Form `tooltip` → `labelTooltip`, `startIcon` → `labelIcon`
+- `rename-isShown-to-isOpen` — Dialog/Popover `isShown` → `isOpen`
+- `rename-topnav-title-to-heading` — TopNav title → heading
+- `rename-sidenav-header-to-heading` — SideNav header → heading
+- `migrate-useXDSIcon-to-getIcon` — `useXDSIcon()` → `getIcon()`
+- `migrate-gap-to-numeric` — String gap tokens → numeric
+- `migrate-isFullBleed-to-padding` — `isFullBleed` → `padding={0}`
+- `migrate-badge-dot-to-statusdot` — Badge dot → StatusDot
+
+#### Upgrade
+
+```sh
+npx pharos upgrade --apply --to 0.0.2
+```
+
+---
+
+# 0.0.1
+
+- Initial release

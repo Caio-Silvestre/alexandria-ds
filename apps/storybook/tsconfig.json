@@ -1,0 +1,32 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@pharos-ds/core": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@pharos-ds/core/*": [
+        "../../packages/core/src/*/index.ts",
+        "../../packages/core/src/*"
+      ],
+      "@pharos-ds/theme/*": [
+        "../../packages/theme/src/*/index.ts",
+        "../../packages/theme/src/*"
+      ],
+      "@pharos-ds/lab": [
+        "../../packages/lab/src/index.ts"
+      ],
+      "@pharos-ds/lab/*": [
+        "../../packages/lab/src/*/index.ts",
+        "../../packages/lab/src/*"
+      ],
+      "@pharos-ds/build/vite": [
+        "../../packages/build/src/vite.ts"
+      ]
+    }
+  },
+  "include": [
+    ".storybook/**/*",
+    "stories/**/*"
+  ]
+}

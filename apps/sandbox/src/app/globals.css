@@ -1,0 +1,15 @@
+/* Copyright (c) Meta Platforms, Inc. and affiliates. */
+
+@import "./layers.css";
+@import "@pharos-ds/core/reset.css";
+@import "@pharos-ds/core/pharos.css";
+@import "@pharos-ds/lab/lab.css";
+@import "@pharos-ds/theme-neutral/theme.css";
+@import "@pharos-ds/theme-matcha/theme.css";
+@import "@pharos-ds/theme-stone/theme.css";
+@import "@pharos-ds/theme-gothic/theme.css";
+@import "@pharos-ds/theme-chocolate/theme.css";
+@import "@pharos-ds/theme-y2k/theme.css";
+@import "@pharos-ds/theme-butter/theme.css";
+
+@stylex;

@@ -1,0 +1,432 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+# PR CI: test, build, analyze, a11y audit, and comment
+# Everything runs in parallel where possible
+#
+# Merge queue: test + build also run on merge_group events so the
+# merge queue can gate on them before landing a PR.
+name: CI
+
+on:
+  pull_request:
+    branches: ["main"]
+  merge_group:
+
+permissions: {}
+
+concurrency:
+  group: "ci-${{ github.event.merge_group.head_sha || github.head_ref }}"
+  cancel-in-progress: true
+
+jobs:
+
+  # Detect docsite-only changes — lets docsite PRs skip heavy jobs
+  check-scope:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      docsite_only: ${{ steps.scope.outputs.docsite_only }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 50
+
+      - name: Fetch base branch
+        run: git fetch origin ${{ github.base_ref }} --depth=50
+
+      - name: Determine change scope
+        id: scope
+        run: |
+          MERGE_BASE=$(git merge-base HEAD origin/${{ github.base_ref }} 2>/dev/null || echo "")
+          if [ -z "$MERGE_BASE" ]; then
+            echo "docsite_only=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          CHANGED=$(git diff --name-only "$MERGE_BASE"...HEAD)
+          NON_DOCSITE=$(echo "$CHANGED" | grep -v '^apps/docsite/' | head -1)
+          if [ -z "$NON_DOCSITE" ]; then
+            echo "docsite_only=true" >> $GITHUB_OUTPUT
+          else
+            echo "docsite_only=false" >> $GITHUB_OUTPUT
+          fi
+  # Docsite data extraction tests — always runs, fast (~2s)
+  docsite-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup
+
+      # docsite `generate` runs `pharos theme build`, which imports the compiled
+      # @pharos-ds/core/theme entry (dist/theme/index.js). Build core first so that
+      # entry exists — otherwise generate fails with "Cannot find module".
+      - name: Build core package
+        run: pnpm -F @pharos-ds/core build
+
+      - name: Generate and test docsite data
+        run: pnpm -F @pharos-ds/docsite generate && pnpm -F @pharos-ds/docsite test
+
+  # Lightweight check — does the PR touch any core components?
+  # Gates pr-a11y to avoid unnecessary work
+  check-components:
+    needs: [check-scope]
+    if: github.event_name == 'pull_request' && needs.check-scope.outputs.docsite_only != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      has_components: ${{ steps.check.outputs.has_components }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # Depth 50 (same as check-scope) so the three-dot diff below can find
+          # a merge base. With the default depth of 1 the diff fails with
+          # "no merge base", the error is swallowed by the pipeline, and
+          # has_components silently becomes false — skipping pr-a11y entirely.
+          fetch-depth: 50
+
+      - name: Fetch base branch
+        run: git fetch origin ${{ github.base_ref }} --depth=50
+
+      - name: Check for component changes
+        id: check
+        run: |
+          if ! git merge-base HEAD origin/${{ github.base_ref }} >/dev/null 2>&1; then
+            echo "::warning::No merge base between HEAD and origin/${{ github.base_ref }} (clone too shallow) — assuming components changed so pr-a11y still runs"
+            echo "has_components=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- packages/core/src/ | grep -v -E '(hooks|theme|utils)/' | head -1)
+          echo "has_components=$( [ -n "$CHANGED" ] && echo true || echo false )" >> $GITHUB_OUTPUT
+
+  # Run tests (parallel with build)
+  test:
+    needs: [check-scope]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Skip for docsite-only changes
+        if: needs.check-scope.outputs.docsite_only == 'true'
+        run: echo "Docsite-only PR — skipping full test suite"
+
+      - uses: actions/checkout@v7
+        if: needs.check-scope.outputs.docsite_only != 'true'
+
+      - uses: ./.github/actions/setup
+        if: needs.check-scope.outputs.docsite_only != 'true'
+
+      - name: Check copyright headers
+        if: needs.check-scope.outputs.docsite_only != 'true'
+        run: ./scripts/add-copyright.sh --check
+
+      - name: Check package.json exports are in sync
+        if: needs.check-scope.outputs.docsite_only != 'true'
+        run: node scripts/sync-exports.js --check
+
+      - name: Check token docs are in sync
+        if: needs.check-scope.outputs.docsite_only != 'true'
+        run: node scripts/generate-token-docs.mjs --check
+
+      - run: pnpm test
+        if: needs.check-scope.outputs.docsite_only != 'true'
+
+  # Build storybook + typecheck + analyze components (parallel with test and
+  # build-sandbox). Uploads the storybook preview and analysis artifacts for
+  # downstream jobs.
+  # The sandbox preview build lives in build-sandbox: it alone takes ~4min
+  # while everything here takes ~2min, so the two run in parallel and the
+  # `build` join below folds their results into the historical check name.
+  build-storybook:
+    needs: [check-scope]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      storybook_url: ${{ steps.urls.outputs.storybook_url }}
+      short_hash: ${{ steps.urls.outputs.short_hash }}
+      sandbox_url: ${{ steps.urls.outputs.sandbox_url }}
+      pr_number: ${{ steps.urls.outputs.pr_number }}
+    steps:
+      - name: Skip for docsite-only changes
+        if: needs.check-scope.outputs.docsite_only == 'true'
+        run: echo "Docsite-only PR — skipping full build"
+
+      - name: Checkout
+        if: needs.check-scope.outputs.docsite_only != 'true'
+        uses: actions/checkout@v7
+        with:
+          # Depth 50 (same as check-scope) so analyze-pr.js's three-dot diff
+          # can find a merge base — depth 1 breaks it ("no merge base") and
+          # the analysis silently reported zero changed components.
+          fetch-depth: 50
+
+      - name: Fetch base branch for PR analysis
+        if: needs.check-scope.outputs.docsite_only != 'true' && github.event_name == 'pull_request'
+        run: git fetch origin ${{ github.base_ref }} --depth=50
+
+      - name: Setup Node and pnpm
+        if: needs.check-scope.outputs.docsite_only != 'true'
+        uses: ./.github/actions/setup
+
+      - name: Build core package
+        if: needs.check-scope.outputs.docsite_only != 'true'
+        run: pnpm build
+
+      - name: Verify package exports
+        if: needs.check-scope.outputs.docsite_only != 'true'
+        run: node scripts/verify-exports.mjs
+
+      - name: Typecheck component docs
+        if: needs.check-scope.outputs.docsite_only != 'true'
+        run: pnpm -F @pharos-ds/core typecheck:docs
+
+      - name: Typecheck lab docs
+        if: needs.check-scope.outputs.docsite_only != 'true'
+        run: pnpm -F @pharos-ds/lab typecheck:docs
+
+      - name: Typecheck charts docs
+        if: needs.check-scope.outputs.docsite_only != 'true'
+        run: pnpm -F @pharos-ds/charts typecheck:docs
+
+      - name: Typecheck template docs
+        if: needs.check-scope.outputs.docsite_only != 'true'
+        run: pnpm -F @pharos-ds/cli typecheck:template-docs
+
+      # Full-package strict checkJs over the CLI (src, bin, scripts, docs, and
+      # the emitted templates). Requires the `pnpm build` above so the template
+      # .tsx sources can resolve the built @pharos-ds/{core,charts,lab} types.
+      - name: Typecheck CLI (strict)
+        if: needs.check-scope.outputs.docsite_only != 'true'
+        run: pnpm -F @pharos-ds/cli typecheck:strict
+
+      - name: Typecheck storybook
+        if: needs.check-scope.outputs.docsite_only != 'true'
+        run: pnpm -F @pharos-ds/storybook typecheck
+
+      - name: Typecheck core (including tests)
+        if: needs.check-scope.outputs.docsite_only != 'true'
+        run: pnpm -F @pharos-ds/core typecheck
+
+      - name: Build Storybook
+        if: needs.check-scope.outputs.docsite_only != 'true'
+        run: pnpm -F @pharos-ds/storybook build
+
+      - name: Compute PR preview path
+        if: needs.check-scope.outputs.docsite_only != 'true' && github.event_name == 'pull_request'
+        id: urls
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          COMMIT_HASH="${{ github.event.pull_request.head.sha }}"
+          SHORT_HASH="${COMMIT_HASH:0:7}"
+          REPO_NAME="${{ github.event.repository.name }}"
+          REPO_OWNER="${{ github.repository_owner }}"
+
+          echo "short_hash=${SHORT_HASH}" >> $GITHUB_OUTPUT
+          echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+          echo "storybook_url=https://${REPO_OWNER}.github.io/${REPO_NAME}/pr/${PR_NUMBER}/" >> $GITHUB_OUTPUT
+          echo "sandbox_url=https://${REPO_OWNER}.github.io/${REPO_NAME}/pr/${PR_NUMBER}/sandbox/" >> $GITHUB_OUTPUT
+
+      - name: Upload Storybook artifact
+        if: needs.check-scope.outputs.docsite_only != 'true' && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: storybook-${{ steps.urls.outputs.short_hash }}
+          path: apps/storybook/dist/
+          retention-days: 30
+
+      - name: Analyze components
+        if: needs.check-scope.outputs.docsite_only != 'true' && github.event_name == 'pull_request'
+        run: |
+          node .github/scripts/analyze-pr.js \
+            --base origin/${{ github.base_ref }} \
+            --head HEAD \
+            --output analysis.json
+
+      - name: Write PR comment metadata
+        if: needs.check-scope.outputs.docsite_only != 'true' && github.event_name == 'pull_request'
+        run: |
+          # The pr-comment and deploy-preview workflows run on workflow_run
+          # (privileged token), so they can comment on and deploy previews for
+          # fork PRs too. Neither context knows the PR number, preview URLs, or
+          # the artifact hash, so persist them here for the trusted jobs to read.
+          #
+          # Preview URLs are now populated for ALL PRs (fork and same-repo alike)
+          # because deploy-preview.yml deploys every PR's preview from the trusted
+          # context — the old fork/same-repo split (empty URLs on forks) is gone.
+          cat > pr-meta.json <<EOF
+          {
+            "prNumber": "${{ steps.urls.outputs.pr_number }}",
+            "shortHash": "${{ steps.urls.outputs.short_hash }}",
+            "storybookUrl": "${{ steps.urls.outputs.storybook_url }}",
+            "sandboxUrl": "${{ steps.urls.outputs.sandbox_url }}",
+            "runId": "${{ github.run_id }}",
+            "runUrl": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          }
+          EOF
+
+      - name: Upload analysis artifact
+        if: needs.check-scope.outputs.docsite_only != 'true' && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr-analysis
+          path: |
+            analysis.json
+            pr-meta.json
+          retention-days: 1
+
+  # Sandbox preview build — the single slowest piece of PR CI (~4min), run as
+  # its own job so it overlaps build-storybook instead of serializing after it.
+  # PR-only: merge_group runs never deploy previews, and docsite-only PRs skip
+  # preview builds entirely.
+  build-sandbox:
+    needs: [check-scope]
+    if: github.event_name == 'pull_request' && needs.check-scope.outputs.docsite_only != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      short_hash: ${{ steps.urls.outputs.short_hash }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node and pnpm
+        uses: ./.github/actions/setup
+
+      - name: Build core package
+        run: pnpm build
+
+      - name: Compute sandbox preview path
+        id: urls
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          COMMIT_HASH="${{ github.event.pull_request.head.sha }}"
+          SHORT_HASH="${COMMIT_HASH:0:7}"
+          REPO_NAME="${{ github.event.repository.name }}"
+
+          echo "short_hash=${SHORT_HASH}" >> $GITHUB_OUTPUT
+          echo "sandbox_base_path=/${REPO_NAME}/pr/${PR_NUMBER}/sandbox" >> $GITHUB_OUTPUT
+
+      - name: Cache Next.js build
+        uses: actions/cache@v6
+        with:
+          path: apps/sandbox/.next/cache
+          # No restore-keys fallback — see deploy.yml for the full rationale.
+          # The Next.js module cache bakes in @pharos-ds/core's resolved export graph,
+          # so a loose fallback can restore a cache built against a different
+          # export shape and silently produce wrong builds (broke #2941's
+          # post-merge deploy). A changed key yields a cold (safe) rebuild.
+          #
+          # Keyed by PR number so PRs never share a cache with main (deploy.yml)
+          # or with other PRs: each PR builds with its own basePath
+          # (SANDBOX_BASE_PATH=/<repo>/pr/<n>/sandbox vs /<repo>/sandbox on main),
+          # and Next.js invalidates the webpack cache whenever the resolved config
+          # changes — so a cache built under a different basePath always restores
+          # as dead weight (download cost, zero reuse) and, because the shared key
+          # "hit", the PR could never save a cache for its own basePath either.
+          # Re-pushes to the same PR keep the same key and get real warm builds.
+          # (This job only runs on pull_request events — see the job-level `if:`
+          # above — so github.event.pull_request.number is always set here.)
+          key: nextjs-sandbox-pr${{ github.event.pull_request.number }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('packages/core/dist/**') }}
+
+      - name: Build Sandbox
+        run: pnpm -F @pharos-ds/sandbox build
+        env:
+          # Must match the deployed Pages path (<owner>.github.io/<repo>/pr/<n>/sandbox).
+          # Built without the /<repo> prefix, the sandbox's root-absolute asset URLs
+          # drop that segment and 404 — breaking all styles/JS on the preview.
+          SANDBOX_BASE_PATH: ${{ steps.urls.outputs.sandbox_base_path }}
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Upload Sandbox artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: sandbox-${{ steps.urls.outputs.short_hash }}
+          path: apps/sandbox/out/
+          retention-days: 30
+
+  # Join gate that keeps the historical `build` check name: anything keyed on
+  # "build" being green (branch protection, tooling, habit) keeps working, and
+  # it fails when either parallel build fails. build-sandbox is legitimately
+  # skipped on docsite-only PRs; a skipped build-storybook (merge_group, or a
+  # failed check-scope) skips this gate too — both match the old single-job
+  # behavior.
+  build:
+    needs: [build-storybook, build-sandbox]
+    if: ${{ !cancelled() && needs.build-storybook.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Assert parallel builds succeeded
+        run: |
+          echo "build-storybook: ${{ needs.build-storybook.result }}"
+          echo "build-sandbox:   ${{ needs.build-sandbox.result }}"
+          [ "${{ needs.build-storybook.result }}" = "success" ] || exit 1
+          case "${{ needs.build-sandbox.result }}" in
+            success|skipped) ;;
+            *) exit 1 ;;
+          esac
+
+  # NOTE: PR preview deploy has moved to deploy-preview.yml (workflow_run).
+  # It used to live here as a `deploy-preview` job, but a pull_request job on a
+  # fork gets a read-only GITHUB_TOKEN and can't push to gh-pages — so previews
+  # only ever appeared on same-repo PRs. The trusted workflow_run companion runs
+  # in the base-repo context with a write token, downloads the static artifacts
+  # this workflow already uploads (storybook-<hash>, sandbox-<hash>), and deploys
+  # for EVERY PR (fork and same-repo alike) without executing any PR code.
+
+  # Accessibility audit
+  # Skipped when no components changed. Depends only on build-storybook, so it
+  # starts as soon as the storybook artifact is up (~2min) instead of waiting
+  # for the slower sandbox build.
+  pr-a11y:
+    needs: [build-storybook, check-components]
+    if: github.event_name == 'pull_request' && needs.check-components.outputs.has_components == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Dependencies are installed later, together with the Playwright browser,
+      # because the analysis artifact has to be downloaded first.
+      - name: Setup Node and pnpm
+        uses: ./.github/actions/setup
+        with:
+          install: 'false'
+
+      - name: Download analysis artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: pr-analysis
+
+      - name: Download Storybook artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: storybook-${{ needs.build-storybook.outputs.short_hash }}
+          path: apps/storybook/dist
+
+      - name: Install Playwright
+        run: pnpm install --frozen-lockfile && npx playwright install chromium
+
+      - name: Run accessibility audit
+        run: |
+          COMPONENTS=$(cat analysis.json | jq -r '(.newComponents + .modifiedComponents) | join(",")')
+          node .github/scripts/accessibility-audit.js \
+            --storybook-dir apps/storybook/dist \
+            --output a11y-report.json \
+            --components "$COMPONENTS"
+
+      - name: Upload a11y artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: a11y-report
+          path: a11y-report.json
+          retention-days: 1

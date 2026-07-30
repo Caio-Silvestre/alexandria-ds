@@ -1,0 +1,62 @@
+{
+  "name": "@pharos-ds/theme-neutral",
+  "version": "0.1.9",
+  "displayName": "Neutral Theme",
+  "private": true,
+  "description": "Restrained warm grays. Minimal and quiet, so the content stays the focus.",
+  "author": "Caio Silvestre",
+  "license": "MIT",
+  "homepage": "https://github.com/Caio-Silvestre/alexandria-ds#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Caio-Silvestre/alexandria-ds.git",
+    "directory": "packages/themes/neutral"
+  },
+  "bugs": {
+    "url": "https://github.com/Caio-Silvestre/alexandria-ds/issues"
+  },
+  "keywords": [
+    "pharos",
+    "theme",
+    "design-system",
+    "lucide",
+    "design-tokens"
+  ],
+  "sideEffects": false,
+  "main": "./dist/source.js",
+  "types": "./dist/source.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/source.d.ts",
+      "import": "./dist/source.mjs",
+      "require": "./dist/source.js"
+    },
+    "./built": {
+      "types": "./dist/neutral.d.ts",
+      "import": "./dist/neutral.js",
+      "require": "./dist/neutral.js"
+    },
+    "./theme.css": {
+      "types": "./theme.css.d.ts",
+      "default": "./dist/theme.css"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "pharos theme build src/neutralTheme.ts -o dist/theme.css && tsup && tsc --project tsconfig.build.json"
+  },
+  "dependencies": {
+    "lucide-react": "^1.18.0"
+  },
+  "peerDependencies": {
+    "@pharos-ds/core": "0.1.9",
+    "react": ">=19"
+  },
+  "devDependencies": {
+    "@pharos-ds/cli": "0.1.9"
+  },
+  "module": "./dist/source.mjs"
+}

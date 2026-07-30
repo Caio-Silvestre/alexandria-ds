@@ -1,0 +1,123 @@
+{
+  "name": "@pharos-ds/cli",
+  "version": "0.1.9",
+  "displayName": "Pharos CLI",
+  "description": "Scaffold projects, browse templates, generate themes, and get agent-ready docs from the command line.",
+  "author": "Caio Silvestre",
+  "license": "MIT",
+  "homepage": "https://github.com/Caio-Silvestre/alexandria-ds#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Caio-Silvestre/alexandria-ds.git",
+    "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/Caio-Silvestre/alexandria-ds/issues"
+  },
+  "keywords": [
+    "pharos",
+    "cli",
+    "design-system",
+    "init",
+    "swizzle",
+    "scaffolding",
+    "theme",
+    "agent-docs"
+  ],
+  "type": "module",
+  "bin": {
+    "pharos": "./bin/pharos.mjs",
+    "cli": "./bin/pharos.mjs"
+  },
+  "exports": {
+    ".": "./bin/pharos.mjs",
+    "./json": {
+      "types": "./types/index.d.ts",
+      "import": "./lib/parse.mjs"
+    },
+    "./api": {
+      "types": "./types/api.d.ts",
+      "import": "./api/index.mjs"
+    },
+    "./config": {
+      "types": "./types/config.d.ts",
+      "import": "./authoring/config.mjs"
+    },
+    "./integration": {
+      "types": "./types/integration.d.ts",
+      "import": "./authoring/integration.mjs"
+    },
+    "./doc": {
+      "types": "./types/doc.d.ts",
+      "import": "./authoring/doc.mjs"
+    },
+    "./template": {
+      "types": "./types/template-api.d.ts",
+      "import": "./authoring/template.mjs"
+    },
+    "./codemod": {
+      "types": "./types/codemod.d.ts",
+      "import": "./authoring/codemod.mjs"
+    },
+    "./xle": {
+      "types": "./lib/xle/browser.d.ts",
+      "import": "./lib/xle/browser.mjs"
+    }
+  },
+  "files": [
+    "bin",
+    "api",
+    "cli",
+    "codemods",
+    "authoring",
+    "lib",
+    "utils",
+    "types",
+    "schemas",
+    "scripts/postinstall.mjs",
+    "templates",
+    "docs",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "pharos": "node bin/pharos.mjs",
+    "postinstall": "node scripts/postinstall.mjs",
+    "typecheck:template-docs": "tsc --project tsconfig.template-docs.json",
+    "typecheck:json-api": "tsc --project tsconfig.json-api.json && tsc --project tsconfig.api-contract.json",
+    "typecheck:strict": "tsc --project tsconfig.strict.json"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "jiti": "^2.7.0",
+    "jscodeshift": "^17.3.0",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@pharos-ds/charts": "*",
+    "@pharos-ds/core": "*",
+    "@pharos-ds/lab": "*",
+    "@pharos-ds/theme-pharos": "*",
+    "gpt-tokenizer": "^3.4.0"
+  },
+  "peerDependenciesMeta": {
+    "@pharos-ds/charts": {
+      "optional": true
+    },
+    "@pharos-ds/core": {
+      "optional": true
+    },
+    "@pharos-ds/lab": {
+      "optional": true
+    },
+    "@pharos-ds/theme-pharos": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@pharos-ds/charts": "*",
+    "@pharos-ds/core": "*",
+    "@pharos-ds/lab": "*",
+    "@pharos-ds/theme-pharos": "*",
+    "gpt-tokenizer": "^3.4.0"
+  }
+}

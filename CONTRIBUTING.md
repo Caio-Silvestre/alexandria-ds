@@ -1,0 +1,536 @@
+# Contributing to Pharos
+
+For the full contribution process — what we accept, how to propose new components, and how API decisions are made — read the **[Contributing wiki](https://github.com/Caio-Silvestre/alexandria-ds/wiki/Contributing)**.
+
+Key pages:
+
+- **[API Conventions](https://github.com/Caio-Silvestre/alexandria-ds/wiki/API-Conventions)** — naming, prop patterns, composition rules (read before submitting an RFC)
+- **[Design Conventions](https://github.com/Caio-Silvestre/alexandria-ds/wiki/Design-Conventions)** — the design-side bar: tokens, spacing, radius, elevation, type, color, motion, and state representations
+- **[Specification Protocol](https://github.com/Caio-Silvestre/alexandria-ds/wiki/Component-Specification-Protocol)** — the 9-phase process for new components
+- **[Component Lifecycle](https://github.com/Caio-Silvestre/alexandria-ds/wiki/Component-Lifecycle)** — how components move from lab → core and templates from hidden → visible
+- **[API Arbitration](https://github.com/Caio-Silvestre/alexandria-ds/wiki/API-Arbitration)** — how we resolve API design questions
+- **[Contributing Templates](https://github.com/Caio-Silvestre/alexandria-ds/wiki/Contributing-Templates)** — building templates/blocks and the template grading rubric
+- **[Blog Review Rubric](https://github.com/Caio-Silvestre/alexandria-ds/wiki/Blog-Review-Rubric)** — how docsite blog posts are reviewed
+- **[Contributing with AI](https://github.com/Caio-Silvestre/alexandria-ds/wiki/Contributing-with-AI-Assistants)** — safe zones, spec protocol, and working with AI tools
+
+This file covers local development setup.
+
+---
+
+## Prerequisites
+
+### Node.js
+
+The Node version lives in `.nvmrc` (currently the 24.x line). CI reads the same
+file via `node-version-file`, so local and CI never drift apart. Don't declare
+the version anywhere else.
+
+**Via nvm (recommended):**
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+source ~/.zshrc
+nvm install   # no argument — reads .nvmrc
+```
+
+`fnm` and `mise` read `.nvmrc` too. `asdf` does not; its `.tool-versions` is
+git-ignored precisely so it cannot become a competing source of truth.
+
+**Via nodejs.org:**
+Download and install from https://nodejs.org
+
+### pnpm
+
+Pharos uses [pnpm](https://pnpm.io/) as its package manager (declared in
+the `packageManager` and `devEngines.packageManager` fields of
+`package.json`). You can install pnpm directly:
+
+```bash
+# Via npm
+npm install -g pnpm@11
+
+# Via Homebrew (macOS)
+brew install pnpm
+
+# Via standalone installer (no npm or Node.js required)
+curl -fsSL https://get.pnpm.io/install.sh | env PNPM_VERSION=11.10.0 sh -
+
+# Via GitHub releases (single binary, no dependencies)
+# https://github.com/pnpm/pnpm/releases/latest
+```
+
+Or use [Corepack](https://nodejs.org/api/corepack.html) to install the exact
+pnpm version Pharos pins:
+
+```bash
+corepack enable
+```
+
+Corepack ships with Node.js 22 and 24, but current Node.js 25+ releases no
+longer bundle it. If `corepack` is missing and you want the auto-pinning path,
+install Corepack manually first:
+
+```bash
+npm install -g corepack
+corepack enable
+```
+
+Verify installation:
+
+```bash
+node --version   # v22.x.x or v24.x.x
+pnpm --version   # 11.x.x
+```
+
+## Getting Started
+
+```bash
+# Clone the repo
+git clone https://github.com/Caio-Silvestre/alexandria-ds.git
+cd pharos
+
+# Install dependencies
+pnpm install
+
+# Build core package first (required for Storybook)
+pnpm -F @pharos-ds/core build
+
+# Start Storybook for component development
+cd apps/storybook
+pnpm dev
+```
+
+### Running Storybook
+
+Storybook loads pre-built packages from `dist/` folders, so you need to build packages before running Storybook.
+
+**First time setup:**
+
+```bash
+# Build all packages
+pnpm build
+
+# Or build just core
+pnpm -F @pharos-ds/core build
+```
+
+**Start Storybook:**
+
+```bash
+cd apps/storybook
+pnpm dev
+```
+
+Storybook will open at http://localhost:6006 with:
+
+- **Theme switcher** - Toggle between Default and Shadcn themes
+- **Mode switcher** - Toggle between Light and Dark modes
+- **Component stories** - Interactive component examples
+
+**If you make changes to `@pharos-ds/core`:**
+
+```bash
+# Rebuild core package
+pnpm -F @pharos-ds/core build
+
+# Restart Storybook to see changes
+cd apps/storybook
+pnpm dev
+```
+
+### Running the Doc Site
+
+The doc site (`apps/docsite/`) is a Next.js app that renders the component
+documentation at https://pharos.dev. To run it locally:
+
+```bash
+# First time only — build the workspace packages it depends on
+pnpm build
+
+# Start the doc site (Next dev server, defaults to localhost:3000)
+pnpm docsite
+```
+
+`pnpm docsite` is a thin alias for `pnpm -F @pharos-ds/docsite dev`,
+which runs the doc site's `generate` step (theme CSS, registries,
+playground scope) before booting Next.
+
+> **Note:** `pnpm docs` collides with the `npm docs` builtin, which
+> tries to open the package's npm page in a browser. Use `pnpm docsite`
+> instead.
+
+## Project Structure
+
+```
+pharos/
+├── apps/
+│   ├── storybook/      # Component playground (localhost:6006)
+│   └── sandbox/        # Development testing
+│
+├── packages/
+│   ├── core/           # Core components (Button, Input, etc.)
+│   ├── cli/            # CLI tooling (pharos)
+│   ├── lab/            # Experimental components (not yet stable)
+│   └── themes/         # Theme presets (default, neutral, daily, and more)
+│
+└── internal/           # Internal tooling (not published)
+    └── test-utils/     # Shared test helpers
+```
+
+## Development Workflow
+
+### Common Commands
+
+| Command           | Description                       |
+| ----------------- | --------------------------------- |
+| `pnpm install`    | Install all dependencies          |
+| `pnpm dev`        | Start all dev servers             |
+| `pnpm build`      | Build all packages                |
+| `pnpm test`       | Run all tests                     |
+| `pnpm test:watch` | Run tests in watch mode           |
+| `pnpm storybook`  | Start Storybook at localhost:6006 |
+| `pnpm lint`       | Lint all packages                 |
+
+## Adding a New Component
+
+Components use **colocated tests** — test files live alongside the component.
+
+### 1. Create the Component Directory
+
+```bash
+mkdir -p packages/core/src/MyComponent
+```
+
+### 2. Create the Component Files
+
+```
+packages/core/src/MyComponent/
+├── MyComponent.tsx        # Component implementation
+├── MyComponent.test.tsx   # Unit tests (colocated)
+├── MyComponent.stories.tsx # Storybook stories
+└── index.ts               # Public exports
+```
+
+### 3. Component Template
+
+````tsx
+// MyComponent.tsx
+import {forwardRef, type HTMLAttributes, type ReactNode} from 'react';
+
+export interface MyComponentProps extends HTMLAttributes<HTMLDivElement> {
+  /** Description for AI-assisted development */
+  children: ReactNode;
+}
+
+/**
+ * Brief description of the component.
+ *
+ * @example
+ * ```
+ * <MyComponent>Hello</MyComponent>
+ * ```
+ */
+export const MyComponent = forwardRef<HTMLDivElement, MyComponentProps>(
+  ({children, ...props}, ref) => {
+    return (
+      <div ref={ref} {...props}>
+        {children}
+      </div>
+    );
+  },
+);
+
+MyComponent.displayName = 'MyComponent';
+````
+
+### 4. Test Template
+
+```tsx
+// MyComponent.test.tsx
+import {describe, it, expect} from 'vitest';
+import {render, screen} from '@testing-library/react';
+import {MyComponent} from './MyComponent';
+
+describe('MyComponent', () => {
+  it('renders children', () => {
+    render(<MyComponent>Hello</MyComponent>);
+    expect(screen.getByText('Hello')).toBeInTheDocument();
+  });
+});
+```
+
+### 5. Story Template
+
+```tsx
+// MyComponent.stories.tsx
+import type {Meta, StoryObj} from '@storybook/react';
+import {MyComponent} from './MyComponent';
+
+const meta = {
+  title: 'Components/MyComponent',
+  component: MyComponent,
+  tags: ['autodocs'],
+} satisfies Meta<typeof MyComponent>;
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+export const Default: Story = {
+  args: {
+    children: 'Hello World',
+  },
+};
+```
+
+### 6. Export from Package
+
+```ts
+// packages/core/src/index.ts
+export * from './MyComponent';
+```
+
+> **Note:** Do not manually edit the `"exports"` field in `packages/core/package.json`.
+> It is auto-generated from the `src/` directory by `scripts/sync-exports.js` and
+> committed automatically when changes land on `main`. If you need to verify your
+> component will be included, run `pnpm sync:exports:check`.
+
+## Testing
+
+### Run Tests
+
+```bash
+# All tests
+pnpm test
+
+# Watch mode
+pnpm test:watch
+
+# Specific package
+pnpm -F @pharos-ds/core test
+
+# With coverage
+pnpm test:coverage
+
+# Screenshot tests
+pnpm test:screenshots
+```
+
+### Test Structure
+
+Tests are colocated with components:
+
+```
+src/Button/
+├── Button.tsx
+└── Button.test.tsx   # Tests live here
+```
+
+## Versioning & Releases
+
+We use [Changesets](https://github.com/changesets/changesets) for versioning, with a thin Pharos layer on top so changelogs stay categorized, contributor-attributed, and aligned with our pre-1.0 conventions.
+
+### Adding a Changeset
+
+When you make a change that should be released:
+
+```bash
+pnpm changeset:new
+```
+
+This wrapper:
+
+1. **Detects which packages you changed** from your git diff and pre-selects them — no hand-enumerating the frontmatter.
+2. **Asks for a category** (`breaking`, `component`, `feat`, `fix`, `perf`, `docs`, `chore`) — this drives changelog grouping, _not_ the semver bump.
+3. **Captures the contributor(s)** — defaults to your `gh`/git identity, so credit is recorded at authoring time (not reconstructed from the release bot's commit).
+4. **Derives the semver bump from the category** — a `[breaking]` change bumps the minor; everything else bumps the patch (see below).
+
+It writes a normal `.changeset/<id>.md` — commit it with your PR. The body looks like:
+
+```md
+---
+'@pharos-ds/core': patch
+---
+
+[fix] Spinner inherits the variant foreground on themed buttons (#2717)
+@yourhandle
+```
+
+You can also pass everything as flags for non-interactive use:
+
+```bash
+pnpm changeset:new --category fix --summary "…" --pr 2717 --contributor yourhandle
+```
+
+> The bare `pnpm changeset` CLI still works, but you must follow the body
+> convention by hand (`[category]` first line + `@handle` line). CI
+> (`pnpm check:changesets`) rejects changesets missing a category or
+> contributor, or whose bump doesn't match the category (`[breaking]` must be
+> `minor`, everything else `patch`), or declaring a `major` bump while 0.x.
+
+### Version Bumps
+
+- **0.x (current): bump follows the category.** We track standard semver for the `0.x.y` range, where a minor bump is the breaking tier (under a caret range like `^0.1.8`, npm resolves `<0.2.0`, so `0.1.x → 0.2.0` is what signals "may break you"). A `[breaking]` change bumps the **minor** (`0.x.y → 0.(x+1).0`); every other category (`feat`, `fix`, `component`, `perf`, `docs`, `chore`) bumps the **patch**. `major` is never used while 0.x — it would jump to `1.0.0`. `pnpm changeset:new` writes the right bump from the category you pick; `pnpm check:changesets` is the CI backstop that enforces the coupling both ways.
+- All publishable packages are a `fixed` group, so a single change co-bumps them to the same version. Only genuinely-affected packages get a changelog entry — the rest get a clean version-only bump.
+
+### How a release is cut
+
+```bash
+pnpm version-packages   # changeset version + scripts/format-changelogs.mjs
+```
+
+`format-changelogs.mjs` rewrites each just-bumped package CHANGELOG into the doc-site format (h1 version, `#### <Category>` sections in canonical order, and a `#### Contributors` section aggregated from the changeset `@handle`s). It's idempotent and has a `--check` mode for CI drift detection.
+
+## Finding Something to Work On
+
+Labels signal what's open for contribution:
+
+- **`good first issue`** / **`help wanted`** — ready to be picked up; start here.
+- **`discussion`** — still being shaped and **not ready for contribution**. The problem is
+  recorded but the solution isn't decided. Please don't start work on a fix until it's triaged
+  out of `discussion`. Comments and ideas are welcome.
+
+For **pull requests**, use GitHub's native **Draft** state to signal "not ready to review/merge
+yet" — open the PR as a draft and mark it ready for review when it's done.
+
+## Pull Request Guidelines
+
+1. Create a feature branch from `main`
+2. Make your changes with tests
+3. Run `pnpm test` and `pnpm lint`
+4. Add a changeset if needed: `pnpm changeset:new`
+5. Open a PR with a clear description
+6. **Leave "Allow edits by maintainers" enabled** (it's checked by default when
+   you open the PR). This lets us rebase your branch onto the latest `main` to
+   clear merge conflicts and keep CI passing against current `main`, so a PR
+   that's ready doesn't get stuck behind staleness while you're away.
+
+> **Why this helps.** `main` moves quickly, and a branch that was green a few
+> days ago can go stale — CI last ran against an older `main`, or a merge
+> conflict appears. With maintainer edits enabled we can rebase and re-run CI
+> for you instead of round-tripping. (One exception: PRs that modify
+> `.github/workflows/**` can't be pushed on your behalf — GitHub requires the
+> author to update those; we'll ping you if so.)
+
+## Code Style
+
+- TypeScript strict mode
+- Functional components with `forwardRef`
+- JSDoc comments for AI-assisted development
+- Export types alongside components
+
+## Troubleshooting
+
+### Setup Issues
+
+**`pnpm: command not found`**
+
+Install pnpm directly:
+
+```bash
+npm install -g pnpm@11
+```
+
+Or enable Corepack if you want to use the repository's pinned pnpm version:
+
+```bash
+corepack enable
+```
+
+**`corepack: command not found`**
+
+Install Corepack manually, then enable it:
+
+```bash
+npm install -g corepack
+corepack enable
+```
+
+Node 25+ does not include Corepack. You can either install Corepack manually or
+install pnpm directly.
+
+**Unexpected Node.js version**
+
+Check the active version before installing dependencies:
+
+```bash
+node --version
+```
+
+Use an active LTS line such as 22 or 24 if your shell selected a different
+version, such as a non-LTS `stable` release.
+
+**CLI path issues**
+
+If `pharos` is not found in a consuming app, add the package script shown in the
+root `README.md` and run it through your package manager:
+
+```bash
+pnpm pharos -- component --list
+```
+
+### pnpm Installation Issues
+
+If `corepack enable` succeeds but `pnpm` fails to download its binary
+(e.g. `ECONNRESET`, `fetch failed`, or `503` from `registry.npmjs.org`),
+your environment likely blocks outbound network access.
+
+**Alternative install methods (no `registry.npmjs.org` needed):**
+
+```bash
+brew install pnpm                        # Homebrew (macOS)
+curl -fsSL https://get.pnpm.io/install.sh | sh -  # Standalone installer
+npm install -g pnpm@11                   # Via npm
+```
+
+You can also download the binary directly from
+[GitHub Releases](https://github.com/pnpm/pnpm/releases/latest).
+
+**Sandboxed IDE terminals:** if your IDE blocks all network, run
+`corepack enable && pnpm install` from a regular terminal first, then
+open the project in your IDE — `node_modules` is on the local filesystem
+and doesn't need network to use.
+
+### Storybook Issues
+
+**"Failed to fetch dynamically imported module"**
+
+- Cause: Core package not built or out of date
+- Fix: `pnpm -F @pharos-ds/core build` then restart Storybook
+
+**"React is not defined"**
+
+- Cause: Missing React import in preview.tsx
+- Fix: Ensure `import * as React from 'react';` at top of preview.tsx
+
+**"Unexpected 'stylex.defineVars' call at runtime"**
+
+- Cause: StyleX code trying to run without compilation
+- Fix: Storybook should load from `dist/` not `src/`. Check vite.config.ts aliases.
+
+**Changes not appearing in Storybook**
+
+- Rebuild the package: `pnpm -F @pharos-ds/core build`
+- Hard refresh browser: Cmd+Shift+R (Mac) or Ctrl+Shift+R (Windows)
+- Clear Storybook cache: Remove `apps/storybook/node_modules/.cache`
+
+## Translations
+
+Pharos accepts community translations via Crowdin. To help translate pharos
+into your language, visit <https://crowdin.com/project/pharos>. New locales are
+picked up automatically after a maintainer reviews the auto-generated
+translations PR.
+
+## Contributor License Agreement ("CLA")
+
+In order to accept your pull request, we need you to submit a CLA. You only need
+to do this once to work on any of Meta's open source projects.
+
+Complete your CLA here: <https://code.facebook.com/cla>
+
+## Issues
+
+We use GitHub issues to track public bugs. Please ensure your description is
+clear and has sufficient instructions to be able to reproduce the issue.
+
+For security vulnerabilities, see [SECURITY.md](SECURITY.md) — do not file a
+public issue.

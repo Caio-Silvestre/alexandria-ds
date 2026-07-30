@@ -1,0 +1,62 @@
+{
+  "name": "@pharos-ds/theme-pharos",
+  "version": "0.1.9",
+  "displayName": "Pharos Theme",
+  "private": false,
+  "description": "Official Pharos theme for the Alexandria brand.",
+  "author": "Caio Silvestre",
+  "license": "MIT",
+  "homepage": "https://github.com/Caio-Silvestre/alexandria-ds#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Caio-Silvestre/alexandria-ds.git",
+    "directory": "packages/themes/pharos"
+  },
+  "bugs": {
+    "url": "https://github.com/Caio-Silvestre/alexandria-ds/issues"
+  },
+  "keywords": [
+    "pharos",
+    "theme",
+    "design-system",
+    "lucide",
+    "design-tokens"
+  ],
+  "sideEffects": false,
+  "main": "./dist/source.js",
+  "types": "./dist/source.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/source.d.ts",
+      "import": "./dist/source.mjs",
+      "require": "./dist/source.js"
+    },
+    "./built": {
+      "types": "./dist/pharos.d.ts",
+      "import": "./dist/pharos.js",
+      "require": "./dist/pharos.js"
+    },
+    "./theme.css": {
+      "types": "./theme.css.d.ts",
+      "default": "./dist/theme.css"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && pharos theme build src/pharosTheme.ts -o dist/theme.css && tsup && tsc --project tsconfig.build.json"
+  },
+  "dependencies": {
+    "lucide-react": "^1.18.0"
+  },
+  "peerDependencies": {
+    "@pharos-ds/core": "0.1.9",
+    "react": ">=19"
+  },
+  "devDependencies": {
+    "@pharos-ds/cli": "0.1.9"
+  },
+  "module": "./dist/source.mjs"
+}

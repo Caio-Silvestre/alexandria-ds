@@ -1,0 +1,18 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.0.0/schema.json",
+  "changelog": "./changelog.cjs",
+  "commit": false,
+  "fixed": [
+    [
+      "@pharos-ds/build",
+      "@pharos-ds/cli",
+      "@pharos-ds/core",
+      "@pharos-ds/theme-pharos"
+    ]
+  ],
+  "linked": [],
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": ["@pharos-ds/storybook", "@pharos-ds/sandbox"]
+}

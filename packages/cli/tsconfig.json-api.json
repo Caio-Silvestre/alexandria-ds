@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "types": ["node"],
+    "customConditions": ["source"]
+  },
+  "include": [
+    "types/**/*.d.ts",
+    "lib/json.mjs",
+    "lib/manifest.mjs",
+    "lib/parse.mjs",
+    "authoring/config.mjs",
+    "../core/src/docs-types.ts"
+  ]
+}

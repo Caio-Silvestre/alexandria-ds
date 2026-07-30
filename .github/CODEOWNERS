@@ -1,0 +1,7 @@
+# Default reviewers for the Pharos repository
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+* @caio-silvestre
+
+/packages/cli/ @caio-silvestre
+/packages/core/README.md @caio-silvestre

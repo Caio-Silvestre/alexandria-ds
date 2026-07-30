@@ -1,0 +1,41 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+
+import {AppShell} from '@pharos-ds/core/AppShell';
+import {Center} from '@pharos-ds/core/Center';
+import {VStack} from '@pharos-ds/core/Layout';
+import {Heading, Text} from '@pharos-ds/core/Text';
+import {SharedTopNav} from '../components/SharedTopNav';
+import {CanaryBanner} from '../components/CanaryBanner';
+import {CURRENT_TARGET} from '../lib/docsVersions';
+import {SiteFooter} from '../components/SiteFooter';
+import {getCopyrightYear} from '../lib/copyrightYear';
+import styles from './not-found.module.css';
+
+export default async function NotFound() {
+  const year = await getCopyrightYear();
+
+  return (
+    <AppShell
+      variant="surface"
+      height="fill"
+      mobileNav={false}
+      banner={CURRENT_TARGET === 'canary' ? <CanaryBanner /> : undefined}
+      topNav={<SharedTopNav />}>
+      <div className={styles.shell}>
+        <div className={styles.content}>
+          <Center axis="both" height="100%">
+            <VStack gap={2} hAlign="center">
+              <Heading level={1} type="display-1">
+                404
+              </Heading>
+              <Text type="body" color="secondary">
+                This page could not be found.
+              </Text>
+            </VStack>
+          </Center>
+        </div>
+        <SiteFooter year={year} />
+      </div>
+    </AppShell>
+  );
+}

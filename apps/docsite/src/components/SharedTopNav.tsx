@@ -1,0 +1,326 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+
+'use client';
+
+import {useEffect, useState} from 'react';
+import {usePathname} from 'next/navigation';
+import * as stylex from '@stylexjs/stylex';
+import {
+  TopNav,
+  TopNavHeading,
+  TopNavItem,
+  TopNavRenderContext,
+  useTopNavRenderMode,
+} from '@pharos-ds/core/TopNav';
+import {useAppShellMobile} from '@pharos-ds/core/AppShell';
+import {MobileNav} from '@pharos-ds/core/MobileNav';
+import {Button} from '@pharos-ds/core/Button';
+import {HStack} from '@pharos-ds/core/Layout';
+import {spacingVars} from '@pharos-ds/core/theme/tokens.stylex';
+import {Search, HeartHandshake, Sun, Moon, Menu} from 'lucide-react';
+import {GITHUB_REPO} from '../constants';
+import {PharosIcon} from './logos';
+import {SearchPalette} from './SearchPalette';
+import {components} from '../generated/componentRegistry';
+import {packages} from '../generated/packageRegistry';
+import {docTopics} from '../generated/docsRegistry';
+import {templates} from '../generated/templateRegistry';
+import {useThemeMode} from '../app/providers';
+import {trackSearch, trackClickCta} from '../lib/analytics';
+
+const GitHubIcon = ({
+  width = 20,
+  height = 20,
+}: {
+  width?: number;
+  height?: number;
+}) => (
+  <svg
+    width={width}
+    height={height}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    xmlns="http://www.w3.org/2000/svg">
+    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12Z" />
+  </svg>
+);
+
+// Responsive helpers. The desktop links and the mobile hamburger both live in
+// the DOM at all times; a pure CSS @media query decides which is visible so the
+// server-rendered HTML is correct on first paint (no post-hydration flip).
+const MOBILE_BREAKPOINT = '@media (max-width: 768px)';
+
+const styles = stylex.create({
+  desktopNav: {
+    display: {
+      default: 'flex',
+      [MOBILE_BREAKPOINT]: 'none',
+    },
+    alignItems: 'center',
+    gap: spacingVars['--spacing-1'],
+  },
+  mobileToggle: {
+    display: {
+      default: 'none',
+      [MOBILE_BREAKPOINT]: 'flex',
+    },
+    alignItems: 'center',
+  },
+  drawerItems: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-0-5'],
+  },
+  // Theme-toggle icons. Both Moon and Sun are always in the DOM; while the mode
+  // is still unresolved ('system'), a pure CSS prefers-color-scheme query decides
+  // which one shows so the first paint matches the OS — otherwise the icon starts
+  // as Moon (resolvedMode's 'light' default) and visibly swaps to Sun on a
+  // dark-OS machine after hydration. Once the mode resolves to a concrete value
+  // (OS-detected or a manual toggle) React forces the icon explicitly; for the
+  // OS-following case that matches what the media query already showed, so
+  // nothing visibly changes.
+  moonWhenSystem: {
+    display: {
+      default: 'inline-flex',
+      '@media (prefers-color-scheme: dark)': 'none',
+    },
+  },
+  sunWhenSystem: {
+    display: {
+      default: 'none',
+      '@media (prefers-color-scheme: dark)': 'inline-flex',
+    },
+  },
+  iconShown: {display: 'inline-flex'},
+  iconHidden: {display: 'none'},
+});
+
+// Primary navigation links, shared by the desktop bar and the mobile drawer.
+const NAV_ITEMS = [
+  {key: 'docs', label: 'Docs', href: '/docs/getting-started'},
+  {key: 'components', label: 'Components', href: '/components'},
+  {key: 'templates', label: 'Templates', href: '/templates'},
+  {key: 'themes', label: 'Themes', href: '/themes'},
+  {key: 'playground', label: 'Playground', href: '/playground'},
+] as const;
+
+export function SharedTopNav() {
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const pathname = usePathname();
+  const {mode, themeMode, toggleMode} = useThemeMode();
+  // When AppShell owns the mobile drawer (docs, which has a sideNav) we defer
+  // to its single hamburger; otherwise we render our own.
+  const {isMobileNavEnabled, closeMobileNav} = useAppShellMobile();
+  const renderMode = useTopNavRenderMode();
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        !event.shiftKey &&
+        !event.altKey &&
+        event.key.toLowerCase() === 'k'
+      ) {
+        event.preventDefault();
+        trackSearch({target: 'open'});
+        setIsSearchOpen(true);
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  // Determine active nav item
+  const getActiveItem = () => {
+    if (
+      pathname === '/docs' ||
+      pathname.startsWith('/docs/') ||
+      pathname.startsWith('/changelog')
+    ) {
+      return 'docs';
+    }
+    if (pathname.startsWith('/templates')) {
+      return 'templates';
+    }
+    if (pathname.startsWith('/themes')) {
+      return 'themes';
+    }
+    if (pathname.startsWith('/components')) {
+      return 'components';
+    }
+    if (pathname.startsWith('/playground')) {
+      return 'playground';
+    }
+    return undefined;
+  };
+
+  const navLinks = (onNavigate?: () => void) =>
+    NAV_ITEMS.map(item => (
+      <TopNavItem
+        key={item.key}
+        label={item.label}
+        href={item.href}
+        isSelected={getActiveItem() === item.key}
+        onClick={onNavigate}
+      />
+    ));
+
+  return (
+    <>
+      <TopNav
+        label="Pharos navigation"
+        heading={
+          <TopNavHeading
+            logo={
+              <PharosIcon
+                width={24}
+                height={24}
+                role="img"
+                aria-label="Pharos"
+                style={{display: 'block', color: 'var(--color-brand)'}}
+              />
+            }
+            headingHref="/"
+          />
+        }
+        centerContent={
+          renderMode === 'drawer' ? (
+            // Bare items — AppShell's drawer supplies its own vertical list;
+            // the desktopNav wrapper would hide them (display:none) here.
+            <>{navLinks(closeMobileNav)}</>
+          ) : (
+            <div {...stylex.props(styles.desktopNav)}>{navLinks()}</div>
+          )
+        }
+        endContent={
+          <HStack gap={2}>
+            <HStack gap={0.5}>
+              <Button
+                label="Search"
+                tooltip="Search"
+                variant="ghost"
+                isIconOnly
+                icon={<Search size={20} />}
+                onClick={() => {
+                  trackSearch({target: 'open'});
+                  setIsSearchOpen(true);
+                }}
+              />
+              <Button
+                label={
+                  mode === 'light'
+                    ? 'Switch to dark mode'
+                    : 'Switch to light mode'
+                }
+                tooltip={
+                  mode === 'light'
+                    ? 'Switch to dark mode'
+                    : 'Switch to light mode'
+                }
+                variant="ghost"
+                isIconOnly
+                icon={
+                  <>
+                    <Moon
+                      size={20}
+                      {...stylex.props(
+                        themeMode === 'system'
+                          ? styles.moonWhenSystem
+                          : mode === 'light'
+                            ? styles.iconShown
+                            : styles.iconHidden,
+                      )}
+                    />
+                    <Sun
+                      size={20}
+                      {...stylex.props(
+                        themeMode === 'system'
+                          ? styles.sunWhenSystem
+                          : mode === 'dark'
+                            ? styles.iconShown
+                            : styles.iconHidden,
+                      )}
+                    />
+                  </>
+                }
+                onClick={toggleMode}
+              />
+              <Button
+                label="Community"
+                tooltip="Community"
+                variant="ghost"
+                isIconOnly
+                icon={<HeartHandshake size={20} />}
+                href="/community"
+              />
+              <Button
+                label="GitHub"
+                tooltip="GitHub"
+                variant="ghost"
+                isIconOnly
+                icon={<GitHubIcon />}
+                href={GITHUB_REPO}
+                onClick={() => trackClickCta({target: 'github'})}
+              />
+            </HStack>
+            <Button
+              label="Get started"
+              variant="primary"
+              href="/docs/getting-started"
+              onClick={() =>
+                trackClickCta({page: 'landing', target: 'get_started'})
+              }
+            />
+            {!isMobileNavEnabled && (
+              <div {...stylex.props(styles.mobileToggle)}>
+                <Button
+                  label="Open menu"
+                  tooltip="Menu"
+                  variant="ghost"
+                  isIconOnly
+                  icon={<Menu size={20} />}
+                  onClick={() => setIsMenuOpen(true)}
+                />
+              </div>
+            )}
+          </HStack>
+        }
+      />
+      <SearchPalette
+        isOpen={isSearchOpen}
+        onOpenChange={setIsSearchOpen}
+        components={components}
+        packages={packages}
+        docTopics={docTopics}
+        templates={templates}
+      />
+      {!isMobileNavEnabled && (
+        <MobileNav
+          isOpen={isMenuOpen}
+          onOpenChange={setIsMenuOpen}
+          side="end"
+          label="Pharos navigation"
+          header={
+            <PharosIcon
+              width={24}
+              height={24}
+              role="img"
+              aria-label="Pharos"
+              style={{display: 'block', color: 'var(--color-brand)'}}
+            />
+          }>
+          <TopNavRenderContext value="drawer">
+            <div {...stylex.props(styles.drawerItems)}>
+              {navLinks(() => setIsMenuOpen(false))}
+            </div>
+          </TopNavRenderContext>
+        </MobileNav>
+      )}
+    </>
+  );
+}
