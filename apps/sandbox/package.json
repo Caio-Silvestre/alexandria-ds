@@ -22,7 +22,7 @@
     "@pharos-ds/lab": "*",
     "@pharos-ds/theme-neutral": "*",
     "@pharos-ds/theme-matcha": "*",
-    "next": "^15.5.16",
+    "next": "^16.3.0-preview.9",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "recharts": "^3.9.2",
