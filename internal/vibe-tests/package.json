@@ -32,7 +32,7 @@
   },
   "dependencies": {
     "@pharos-ds/cli": "*",
-    "commander": "^12.1.0"
+    "commander": "^15.0.0"
   },
   "devDependencies": {
     "@radix-ui/react-avatar": "^1.2.0",
@@ -55,7 +55,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "cmdk": "^1.0.0",
-    "lucide-react": "^1.18.0",
+    "lucide-react": "^1.26.0",
     "postcss": "^8.5.18",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.2",

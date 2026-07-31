@@ -1,6 +1,6 @@
 {
   "name": "@pharos-ds/theme-neutral",
-  "version": "0.1.9",
+  "version": "1.0.0",
   "displayName": "Neutral Theme",
   "private": true,
   "description": "Restrained warm grays. Minimal and quiet, so the content stays the focus.",
@@ -49,14 +49,14 @@
     "build": "pharos theme build src/neutralTheme.ts -o dist/theme.css && tsup && tsc --project tsconfig.build.json"
   },
   "dependencies": {
-    "lucide-react": "^1.18.0"
+    "lucide-react": "^1.26.0"
   },
   "peerDependencies": {
-    "@pharos-ds/core": "0.1.9",
+    "@pharos-ds/core": "1.0.0",
     "react": ">=19"
   },
   "devDependencies": {
-    "@pharos-ds/cli": "0.1.9"
+    "@pharos-ds/cli": "1.0.0"
   },
   "module": "./dist/source.mjs"
 }

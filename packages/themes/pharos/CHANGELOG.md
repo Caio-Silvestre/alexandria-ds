@@ -1,5 +1,27 @@
 # @xds/theme-neutral
 
+# 1.0.1
+
+#### Fixes
+
+- Accent/primary passa a usar laranja Alexandria `#F26641` (dark `#FF8A5C`); azul `#034694` permanece na escala categórica / badge info
+
+---
+
+# 1.0.0
+
+#### New Features
+
+- Theme Pharos: alinhar accent, texto e tons categóricos à paleta oficial da Alexandria (#034694 azul, #383838 chumbo, destaques roxo/laranja/amarelo)
+
+#### Contributors
+
+Thanks to everyone who contributed to this release:
+
+- @Caio-Silvestre
+
+---
+
 # 0.1.9
 
 ---

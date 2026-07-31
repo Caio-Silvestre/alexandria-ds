@@ -23,9 +23,9 @@
     "@pharos-ds/theme-neutral": "*",
     "@pharos-ds/theme-matcha": "*",
     "next": "^15.5.16",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
-    "recharts": "^3.9.2",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "recharts": "^3.10.0",
     "@pharos-ds/theme-stone": "*",
     "@pharos-ds/theme-gothic": "*",
     "@pharos-ds/theme-chocolate": "*",
@@ -40,7 +40,7 @@
     "@types/node": "^25.9.3",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
-    "commander": "^12.1.0",
+    "commander": "^15.0.0",
     "typescript": "^6.0.3",
     "@pharos-ds/build": "*"
   }
